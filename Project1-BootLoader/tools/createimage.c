@@ -102,13 +102,12 @@ static void create_image(int nfiles, char *files[])
         /* read ELF header */
         read_ehdr(&ehdr, fp);
         printf("0x%04lx: %s\n", ehdr.e_entry, *files);
-
+      
         /* for each program header */
         for (int ph = 0; ph < ehdr.e_phnum; ph++) {
 
             /* read program header */
             read_phdr(&phdr, fp, ph, ehdr);
-
             if (phdr.p_type != PT_LOAD) continue;
 
             /* write segment to the image */

@@ -11,16 +11,15 @@ PROJECT_IDX	= 1
 SHELL       = /bin/sh
 DISK        = /dev/sdb
 TTYUSB1     = /dev/ttyUSB1
-DIR_OSLAB   = $(HOME)/OSLab-RISC-V
-DIR_QEMU    = $(DIR_OSLAB)/qemu
-DIR_UBOOT   = $(DIR_OSLAB)/u-boot
+DIR_QEMU    = ~/qemu
+DIR_UBOOT   = ~/u-boot
 
 # -----------------------------------------------------------------------
 # Build and Debug Tools
 # -----------------------------------------------------------------------
 
 HOST_CC         = gcc
-CROSS_PREFIX    = riscv64-unknown-linux-gnu-
+CROSS_PREFIX    = riscv64-linux-gnu-
 CC              = $(CROSS_PREFIX)gcc
 OBJDUMP         = $(CROSS_PREFIX)objdump
 GDB             = $(CROSS_PREFIX)gdb
@@ -32,10 +31,10 @@ MINICOM         = minicom
 # Build/Debug Flags and Variables
 # -----------------------------------------------------------------------
 
-CFLAGS          = -O0 -fno-builtin -nostdlib -nostdinc -Wall -mcmodel=medany -ggdb3
+CFLAGS          = -O0 -static -fno-builtin -nostdlib -nostdinc -Wall -mcmodel=medany -ggdb3
 
 BOOT_INCLUDE    = -I$(DIR_ARCH)/include
-BOOT_CFLAGS     = $(CFLAGS) $(BOOT_INCLUDE) -Wl,--defsym=TEXT_START=$(BOOTLOADER_ENTRYPOINT) -T riscv.lds
+BOOT_CFLAGS     = $(CFLAGS) $(BOOT_INCLUDE) -Wl,--build-id=none,--defsym=TEXT_START=$(BOOTLOADER_ENTRYPOINT) -T riscv.lds
 
 KERNEL_INCLUDE  = -I$(DIR_ARCH)/include -Iinclude
 KERNEL_CFLAGS   = $(CFLAGS) $(KERNEL_INCLUDE) -Wl,--defsym=TEXT_START=$(KERNEL_ENTRYPOINT) -T riscv.lds
