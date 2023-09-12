@@ -46,14 +46,24 @@ static void init_task_info(void)
 /* Do not touch this comment. Reserved for future projects. */
 /************************************************************/
 
+__attribute__((noreturn))
+void panic(const char *msg)
+{
+    bios_putstr("bss check failed!\n\r");
+    while (1)
+    {
+        asm volatile("wfi");
+    }
+}
+
 int main(void)
 {
     // Check whether .bss section is set to zero
     int check = bss_check();
-
+    if (!check)
+      panic("bss check failed!\n\r");
     // Init jump table provided by kernel and bios(ΦωΦ)
     init_jmptab();
-
     // Init task information (〃'▽'〃)
     init_task_info();
 
@@ -78,7 +88,7 @@ int main(void)
 
     // TODO: Load tasks by either task id [p1-task3] or task name [p1-task4],
     //   and then execute them.
-
+    
     // Infinite while loop, where CPU stays in a low-power state (QAQQQQQQQQQQQ)
     while (1)
     {

@@ -43,7 +43,7 @@ static void write_segment(Elf64_Phdr phdr, FILE *fp, FILE *img, int *phyaddr);
 static void write_padding(FILE *img, int *phyaddr, int new_phyaddr);
 static void write_img_info(int nbytes_kernel, task_info_t *taskinfo,
                            short tasknum, FILE *img);
-
+static void write_padding_bootblock(FILE *img, int *phyaddr, int nbytes_kernel);
 int main(int argc, char **argv)
 {
     char *progname = argv[0];
@@ -85,11 +85,21 @@ static void create_image(int nfiles, char *files[])
     FILE *fp = NULL, *img = NULL;
     Elf64_Ehdr ehdr;
     Elf64_Phdr phdr;
-
+    /* first read info of the kernel */
+    fp = fopen("main", "r");
+    assert(fp != NULL);
+    read_ehdr(&ehdr, fp);
+    printf("reading kernel file: 0x%04lx: main\n", ehdr.e_entry);
+    for (int ph = 0; ph < ehdr.e_phnum; ph++) {
+        read_phdr(&phdr, fp, ph, ehdr);
+        if (phdr.p_type == PT_LOAD)
+            nbytes_kernel += get_filesz(phdr);
+    }
+    fclose(fp);
+    assert(nbytes_kernel > 0);
     /* open the image file */
     img = fopen(IMAGE_FILE, "w");
     assert(img != NULL);
-
     /* for each input file */
     for (int fidx = 0; fidx < nfiles; ++fidx) {
 
@@ -105,20 +115,12 @@ static void create_image(int nfiles, char *files[])
       
         /* for each program header */
         for (int ph = 0; ph < ehdr.e_phnum; ph++) {
-
             /* read program header */
             read_phdr(&phdr, fp, ph, ehdr);
             if (phdr.p_type != PT_LOAD) continue;
-
             /* write segment to the image */
             write_segment(phdr, fp, img, &phyaddr);
-
-            /* update nbytes_kernel */
-            if (strcmp(*files, "main") == 0) {
-                nbytes_kernel += get_filesz(phdr);
-            }
         }
-
         /* write padding bytes */
         /**
          * TODO:
@@ -127,7 +129,7 @@ static void create_image(int nfiles, char *files[])
          * 2. [p1-task4] only padding bootblock is allowed!
          */
         if (strcmp(*files, "bootblock") == 0) {
-            write_padding(img, &phyaddr, SECTOR_SIZE);
+            write_padding_bootblock(img, &phyaddr, nbytes_kernel);
         }
 
         fclose(fp);
@@ -204,6 +206,23 @@ static void write_padding(FILE *img, int *phyaddr, int new_phyaddr)
     }
 
     while (*phyaddr < new_phyaddr) {
+        fputc(0, img);
+        (*phyaddr)++;
+    }
+}
+
+static void write_padding_bootblock(FILE *img, int *phyaddr, int nbytes_kernel) {
+    if (options.extended == 1 && *phyaddr < SECTOR_SIZE) {
+        printf("\t\twrite 0x%04x bytes for padding\n", SECTOR_SIZE - *phyaddr);
+    }
+    while (*phyaddr < SECTOR_SIZE) {
+        if (*phyaddr == OS_SIZE_LOC) {
+            fputc(NBYTES2SEC(nbytes_kernel), img);
+            printf("Writing kernel size to 0x%hx, the kernel takes up %d sectors\n", 
+                   *phyaddr, NBYTES2SEC(nbytes_kernel));
+            (*phyaddr)++;
+            continue;
+        }
         fputc(0, img);
         (*phyaddr)++;
     }
