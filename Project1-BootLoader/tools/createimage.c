@@ -12,6 +12,7 @@
 #define SECTOR_SIZE 512
 #define BOOT_LOADER_SIG_OFFSET 0x1fe
 #define OS_SIZE_LOC (BOOT_LOADER_SIG_OFFSET - 2)
+#define META_OFFSET_LOC (OS_SIZE_LOC - 4)
 #define BOOT_LOADER_SIG_1 0x55
 #define BOOT_LOADER_SIG_2 0xaa
 
@@ -19,12 +20,12 @@
 
 /* TODO: [p1-task4] design your own task_info_t */
 typedef struct {
-
+  uint32_t offset;
+  uint32_t name_offset;
 } task_info_t;
 
 #define TASK_MAXNUM 16
 static task_info_t taskinfo[TASK_MAXNUM];
-
 /* structure to store command line options */
 static struct {
     int vm;
@@ -41,9 +42,10 @@ static uint32_t get_filesz(Elf64_Phdr phdr);
 static uint32_t get_memsz(Elf64_Phdr phdr);
 static void write_segment(Elf64_Phdr phdr, FILE *fp, FILE *img, int *phyaddr);
 static void write_padding(FILE *img, int *phyaddr, int new_phyaddr);
-static void write_img_info(int nbytes_kernel, task_info_t *taskinfo,
+static void write_img_info(int nbytes_kernel, task_info_t *taskinfo, char* files[], 
                            short tasknum, FILE *img);
 static void write_padding_bootblock(FILE *img, int *phyaddr, int nbytes_kernel);
+static uint32_t meta_offset;
 int main(int argc, char **argv)
 {
     char *progname = argv[0];
@@ -100,6 +102,7 @@ static void create_image(int nfiles, char *files[])
     /* open the image file */
     img = fopen(IMAGE_FILE, "w");
     assert(img != NULL);
+
     /* for each input file */
     for (int fidx = 0; fidx < nfiles; ++fidx) {
 
@@ -112,7 +115,13 @@ static void create_image(int nfiles, char *files[])
         /* read ELF header */
         read_ehdr(&ehdr, fp);
         printf("0x%04lx: %s\n", ehdr.e_entry, *files);
-      
+        int nbytes = 0;    
+        if (taskidx >= 0) {
+            taskinfo[taskidx].offset = phyaddr;
+            // compute name_offset relative to the meta_offset
+            taskinfo[taskidx].name_offset = taskidx ? 
+              taskinfo[taskidx - 1].name_offset + strlen(files[fidx - 1]) + 1 : 0;
+        }
         /* for each program header */
         for (int ph = 0; ph < ehdr.e_phnum; ph++) {
             /* read program header */
@@ -120,6 +129,7 @@ static void create_image(int nfiles, char *files[])
             if (phdr.p_type != PT_LOAD) continue;
             /* write segment to the image */
             write_segment(phdr, fp, img, &phyaddr);
+            nbytes += get_filesz(phdr);
         }
         /* write padding bytes */
         /**
@@ -128,15 +138,20 @@ static void create_image(int nfiles, char *files[])
          *  occupies the same number of sectors
          * 2. [p1-task4] only padding bootblock is allowed!
          */
+        
         if (strcmp(*files, "bootblock") == 0) {
             write_padding_bootblock(img, &phyaddr, nbytes_kernel);
         }
-
         fclose(fp);
         files++;
     }
-    write_img_info(nbytes_kernel, taskinfo, tasknum, img);
-
+    meta_offset = phyaddr;
+    write_img_info(nbytes_kernel, taskinfo, files, tasknum, img);
+    fseek(img, META_OFFSET_LOC, SEEK_SET);
+    fputc(*((char*)(&meta_offset)), img);
+    fputc(*((char*)(&meta_offset) + 1), img);
+    fputc(*((char*)(&meta_offset) + 2), img);
+    fputc(*((char*)(&meta_offset) + 3), img);
     fclose(img);
 }
 
@@ -182,7 +197,6 @@ static uint32_t get_memsz(Elf64_Phdr phdr)
 {
     return phdr.p_memsz;
 }
-
 static void write_segment(Elf64_Phdr phdr, FILE *fp, FILE *img, int *phyaddr)
 {
     if (phdr.p_memsz != 0 && phdr.p_type == PT_LOAD) {
@@ -218,7 +232,7 @@ static void write_padding_bootblock(FILE *img, int *phyaddr, int nbytes_kernel) 
     while (*phyaddr < SECTOR_SIZE) {
         if (*phyaddr == OS_SIZE_LOC) {
             fputc(NBYTES2SEC(nbytes_kernel), img);
-            printf("Writing kernel size to 0x%hx, the kernel takes up %d sectors\n", 
+            printf("writing kernel size to 0x%hx, the kernel takes up %d sectors\n", 
                    *phyaddr, NBYTES2SEC(nbytes_kernel));
             (*phyaddr)++;
             continue;
@@ -228,11 +242,47 @@ static void write_padding_bootblock(FILE *img, int *phyaddr, int nbytes_kernel) 
     }
 }
 
-static void write_img_info(int nbytes_kernel, task_info_t *taskinfo,
+
+/* The user applications are stored as follows:
+ * Task 1
+ * Task 2
+ * Task 3
+ * ...
+ * Task n
+ * #tasks        ------------- 4 bytes
+ * offset 1      ------------- 4 bytes
+ * name_offset 1 ------------- 4 bytes
+ * offset 2
+ * name_offset 2
+ * ...
+ * offset n
+ * name offset n
+ * name 1
+ * name 2
+ * ...
+ * */
+static void write_img_info(int nbytes_kernel, task_info_t *taskinfo, char* files[],
                            short tasknum, FILE * img)
 {
-    // TODO: [p1-task3] & [p1-task4] write image info to some certain places
-    // NOTE: os size, infomation about app-info sector(s) ...
+    // todo: [p1-task3] & [p1-task4] write image info to some certain places
+    // note: os size, infomation about app-info sector(s) ...
+    
+    // Since I have already written the nbytes_kernel in write_padding_bootblock
+    // there is no need to write it here
+    // since tasknum is at most 16, char is enough
+    uint32_t phyaddr = meta_offset;
+    for (int i = 0; i < tasknum; i++) {
+        // name offset relative to the start
+        taskinfo[i].name_offset += (sizeof(int) + sizeof(task_info_t) * tasknum);
+        taskinfo[i].name_offset += meta_offset;
+    }
+    fputc((char)tasknum, img);
+    uint32_t name_region_offset = taskinfo[0].name_offset;
+    for (char* p = (char*)taskinfo; phyaddr < name_region_offset; phyaddr++)
+        fputc(*p, img);
+    for (int i = 0; i < tasknum; i++) {
+        fputs(files[i + 2], img);
+    }
 }
 
 /* print an error message and exit */

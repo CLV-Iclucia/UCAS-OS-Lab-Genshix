@@ -21,7 +21,6 @@ ENTRY(_start)
   csrw CSR_SIP, zero
 
   /* TODO: [p1-task2] clear BSS for flat non-ELF images */
-  /* now I can only hardcode this */
   lui t0, %hi(_bss_start_)
   add t0, t0, %lo(_bss_start_)
   lw t0, 0(t0)

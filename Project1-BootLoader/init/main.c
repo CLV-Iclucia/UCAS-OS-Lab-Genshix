@@ -1,4 +1,4 @@
-#include <common.h>
+
 #include <asm.h>
 #include <os/kernel.h>
 #include <os/task.h>
@@ -6,17 +6,19 @@
 #include <os/loader.h>
 #include <type.h>
 
-#define VERSION_BUF 50
-
+#define version_buf 50
+#define META_OFFSET_ADDR 0x502001f8
 int version = 2; // version must between 0 and 9
-char buf[VERSION_BUF];
-
-// Task info array
+char buf[version_buf];
+#define TASK_MAXNUM 16
+#define MAX_STRLEN 128
+uint32_t tasknum;
+// task info array
 task_info_t tasks[TASK_MAXNUM];
 
 static int bss_check(void)
 {
-    for (int i = 0; i < VERSION_BUF; ++i)
+    for (int i = 0; i < version_buf; ++i)
     {
         if (buf[i] != 0)
         {
@@ -36,16 +38,6 @@ static void init_jmptab(void)
     jmptab[SD_READ]         = (long (*)())sd_read;
 }
 
-static void init_task_info(void)
-{
-    // TODO: [p1-task4] Init 'tasks' array via reading app-info sector
-    // NOTE: You need to get some related arguments from bootblock first
-}
-
-/************************************************************/
-/* Do not touch this comment. Reserved for future projects. */
-/************************************************************/
-
 __attribute__((noreturn))
 void panic(const char *msg)
 {
@@ -56,18 +48,117 @@ void panic(const char *msg)
     }
 }
 
+#define NBUFFER_SECTORS 2
+#define SEC_SIZE 512
+char sd_buf[NBUFFER_SECTORS][SEC_SIZE];
+int buf_sec_no[NBUFFER_SECTORS] = {-1, -1};
+
+/* randomly return 0 or 1 for replacement */
+static int random() {
+    static int gen = 0x114514;
+    gen ^= gen << 3;
+    gen ^= gen >> 5;
+    gen ^= gen << 7;
+    return gen & 1;
+}
+
+char getc_img(uint32_t offset) {
+    int sec_no = NBYTES2SEC(offset);
+    if (buf_sec_no[0] == sec_no)
+        return sd_buf[0][offset & (SEC_SIZE - 1)];
+    if (buf_sec_no[1] == sec_no)
+        return sd_buf[1][offset & (SEC_SIZE - 1)];
+    int evict = random();
+    buf_sec_no[evict] = sec_no;
+    bios_sd_read((uint32_t)(sd_buf[evict]), 1, sec_no);
+    return sd_buf[evict][offset & (SEC_SIZE - 1)];
+}
+
+static inline uint32_t readint_img(uint32_t offset) {
+    uint32_t lo = (getc_img(offset) & 0xff) | ((getc_img(offset + 1) & 0xff) << 8);
+    uint32_t hi = ((getc_img(offset + 2) & 0xff) << 16) | 
+                  ((getc_img(offset + 3) & 0xff) << 24);
+    return lo | hi;
+}
+
+uint32_t meta_offset;
+/* 
+recap my format
+
+------------                0
+bootloader                  512b
+------------
+kernel                      unknown
+------------                tasks[0].offset
+app 1
+------------                tasks[1].offset
+app 2
+------------
+...
+------------                meta_offset
+#tasks                      4b
+------------
+tasks[0].offset          4b
+tasks[0].name_offset     4b
+------------
+tasks[1].offset          4b
+tasks[1].name_offset     4b
+------------
+...
+------------                tasks[0].name_offset
+tasks[0].name
+------------                tasks[1].name_offset
+tasks[1].name
+------------
+...
+*/
+static void init_task_info(void)
+{
+    bios_putstr("initing tasks...\n\r");
+    // todo: [p1-task4] init 'tasks' array via reading app-info sector
+    // note: you need to get some related arguments from bootblock first
+    meta_offset = *(uint32_t*)(META_OFFSET_ADDR);
+    uint32_t ptr = meta_offset;
+    tasknum = readint_img(ptr);
+    ptr += 4;
+    if (tasknum < 0) panic("#tasks is negative!\n\r");
+    if (tasknum > TASK_MAXNUM) panic("too many tasks!\n\r");
+    if (tasknum == 0) {
+        bios_putstr("warning: no available tasks!\n\r");
+        return ;
+    }
+    for (int i = 0; i < tasknum; i++, ptr += 8) {
+        tasks[i].offset = readint_img(ptr);
+        tasks[i].name_offset = readint_img(ptr + 4);
+    }
+    if (ptr != tasks[0].name_offset) panic("user image corrupted!\n\r");
+}
+
+static char getchar() {
+    while (1) {
+        char c = bios_getchar();
+        if (c != -1) return c;
+    }
+}
+
+/* ChatGPT told me to jump to the user tasks like this */
+typedef void (*EntryPoint)();
+
+/************************************************************/
+/* do not touch this comment. reserved for future projects. */
+/************************************************************/
 int main(void)
 {
-    // Check whether .bss section is set to zero
+    // check whether .bss section is set to zero
     int check = bss_check();
     if (!check)
       panic("bss check failed!\n\r");
-    // Init jump table provided by kernel and bios(ΦωΦ)
+    // init jump table provided by kernel and bios(φωφ)
     init_jmptab();
-    // Init task information (〃'▽'〃)
+    // init task information (〃'▽'〃)
     init_task_info();
 
-    // Output 'Hello OS!', bss check result and OS version
+    // output 'hello os!', bss check result and os version
     char output_str[] = "bss check: _ version: _\n\r";
     char output_val[2] = {0};
     int i, output_val_pos = 0;
@@ -83,13 +174,23 @@ int main(void)
         }
     }
 
-    bios_putstr("Hello OS!\n\r");
+    bios_putstr("hello os!\n\r");
     bios_putstr(buf);
-
-    // TODO: Load tasks by either task id [p1-task3] or task name [p1-task4],
+    char input_buf[MAX_STRLEN];
+    // todo: load tasks by either task id [p1-task3] or task name [p1-task4],
     //   and then execute them.
-    
-    // Infinite while loop, where CPU stays in a low-power state (QAQQQQQQQQQQQ)
+    while (1) {
+        int ptr = 0;
+        char c = getchar();
+        while (c != '\n') {
+            input_buf[ptr++] = c;
+            c = getchar();
+        }
+        input_buf[ptr] = '\0';
+        EntryPoint entry_point = (EntryPoint)load_task_by_name(input_buf);
+        entry_point();
+    }
+    // infinite while loop, where cpu stays in a low-power state (qaqqqqqqqqqqq)
     while (1)
     {
         asm volatile("wfi");

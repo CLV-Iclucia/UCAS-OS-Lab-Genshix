@@ -119,7 +119,7 @@ asm: $(ELF_BOOT) $(ELF_MAIN) $(ELF_USER)
 	for elffile in $^; do $(OBJDUMP) -d $$elffile > $(notdir $$elffile).txt; done
 
 gdb:
-	$(GDB) $(ELF_MAIN) -ex "target remote:1234"
+	$(GDB) $(ELF_MAIN)
 
 run:
 	$(QEMU) $(QEMU_OPTS)
