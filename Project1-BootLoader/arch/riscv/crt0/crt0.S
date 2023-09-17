@@ -4,19 +4,19 @@
 
 ENTRY(_start)
     /* TODO: [p1-task3] setup C runtime environment for the user program */
-    mv t1, sp
-    lui sp, %hi(_start)
-    add sp, sp, %lo(_start)
-    addi sp, sp, 2047
-    addi sp, sp, 2045
-    sw t1, 0(sp)
+    addi sp, sp, -4
+    sw ra, 0(sp)
+  //  mv t1, sp
+//    lui sp, %hi(_start)
+ //   add sp, sp, %lo(_start)
+  //  addi sp, sp, 2047
+ //   addi sp, sp, 2045
+//    sw t1, 0(sp)
     /* TODO: [p1-task3] enter main function */
     lui t0, %hi(__bss_start)
     add t0, t0, %lo(__bss_start)
-    lw t0, 0(t0)
     lui t1, %hi(__BSS_END__)
     add t1, t1, %lo(__BSS_END__)
-    lw t1, 0(t1)
 clear_loop:
     beq t0, t1, end_loop
     sw x0, 0(t0)
@@ -25,7 +25,9 @@ clear_loop:
 end_loop:
     call main
     /* TODO: [p1-task3] finish task and return to the kernel, replace this in p3-task2! */
-    lw sp, 0(sp)
+  //  lw sp, 0(sp)
+    lw ra, 0(sp)
+    addi sp, sp, 4
     ret
     /************************************************************/
 	/* Do not touch this comment. Reserved for future projects. */

@@ -31,16 +31,25 @@ MINICOM         = minicom
 # Build/Debug Flags and Variables
 # -----------------------------------------------------------------------
 
-CFLAGS          = -O0 -static -fno-builtin -nostdlib -nostdinc -Wall -mcmodel=medany -ggdb3
+CFLAGS          = -O0 -static -fno-builtin -Wl,--build-id=none -nostdlib -nostdinc -Wall -mcmodel=medany -ggdb3
 
 BOOT_INCLUDE    = -I$(DIR_ARCH)/include
-BOOT_CFLAGS     = $(CFLAGS) $(BOOT_INCLUDE) -Wl,--build-id=none,--defsym=TEXT_START=$(BOOTLOADER_ENTRYPOINT) -T riscv.lds
+BOOT_CFLAGS     = $(CFLAGS) $(BOOT_INCLUDE) -Wl,--defsym=TEXT_START=$(BOOTLOADER_ENTRYPOINT) -T riscv.lds
 
 KERNEL_INCLUDE  = -I$(DIR_ARCH)/include -Iinclude
-KERNEL_CFLAGS   = $(CFLAGS) $(KERNEL_INCLUDE) -Wl,--build-id=none,--defsym=TEXT_START=$(KERNEL_ENTRYPOINT) -T riscv.lds
+KERNEL_CFLAGS   = $(CFLAGS) $(KERNEL_INCLUDE) -Wl,--defsym=TEXT_START=$(KERNEL_ENTRYPOINT) -T riscv.lds
 
 USER_INCLUDE    = -I$(DIR_TINYLIBC)/include
 USER_CFLAGS     = $(CFLAGS) $(USER_INCLUDE)
+
+LIB_DIR     = $(DEFLATE_DIR)/lib
+
+DEFLATE_INCLUDE = -I$(LIB_DIR) -I$(DEFLATE_DIR)
+DEFLATE_CFLAGS  = -Os $(DEFLATE_INCLUDE) -Wall -DFREESTANDING
+
+DECOMPRESSOR_CFLAGS  = -static -fno-builtin -Wl,--build-id=none -nostdlib \
+                         -nostdinc -Wall -mcmodel=medany -ggdb3  \
+												 $(BOOT_INCLUDE) $(DEFLATE_CFLAGS)
 
 QEMU_OPTS       = -nographic -machine virt -m 256M -kernel $(UBOOT) -bios none \
                      -drive if=none,format=raw,id=image,file=${ELF_IMAGE} \
@@ -59,6 +68,8 @@ DIR_KERNEL      = ./kernel
 DIR_LIBS        = ./libs
 DIR_TINYLIBC    = ./tiny_libc
 DIR_TEST        = ./test
+DIR_TOOLS       = ./tools
+DEFLATE_DIR     = $(DIR_TOOLS)/deflate
 DIR_TEST_PROJ   = $(DIR_TEST)/test_project$(PROJECT_IDX)
 
 BOOTLOADER_ENTRYPOINT   = 0x50200000
@@ -79,6 +90,7 @@ SRC_LIBS    = $(wildcard $(DIR_LIBS)/*.c)
 SRC_MAIN    = $(SRC_ARCH) $(SRC_INIT) $(SRC_BIOS) $(SRC_KERNEL) $(SRC_LIBS)
 
 ELF_BOOT    = $(DIR_BUILD)/bootblock
+ELF_DECOMPRESSOR = $(DIR_BUILD)/decompressor
 ELF_MAIN    = $(DIR_BUILD)/main
 ELF_IMAGE   = $(DIR_BUILD)/image
 
@@ -92,6 +104,8 @@ OBJ_CRT0    = $(DIR_BUILD)/$(notdir $(SRC_CRT0:.S=.o))
 SRC_USER    = $(wildcard $(DIR_TEST_PROJ)/*.c)
 ELF_USER    = $(patsubst %.c, %, $(foreach file, $(SRC_USER), $(DIR_BUILD)/$(notdir $(file))))
 
+SRC_LIB     = $(LIB_DIR)/*.c
+SRC_COMMON  = $(DEFLATE_DIR)/*.c
 # -----------------------------------------------------------------------
 # Host Linux Tools Source Files
 # -----------------------------------------------------------------------
@@ -149,7 +163,12 @@ $(DIR_BUILD)/%: $(DIR_TEST_PROJ)/%.c $(OBJ_CRT0) riscv.lds
 	$(CC) $(USER_CFLAGS) -o $@ $(OBJ_CRT0) $< -Wl,--defsym=TEXT_START=$(USER_ENTRYPOINT) -T riscv.lds
 	$(eval USER_ENTRYPOINT := $(shell python3 -c "print(hex(int('$(USER_ENTRYPOINT)', 16) + int('0x10000', 16)))"))
 
-elf: $(ELF_BOOT) $(ELF_MAIN) $(ELF_USER)
+$(ELF_DECOMPRESSOR): $(DIR_TOOLS)/decompressor.c $(SRC_BIOS) $(SRC_LIB) $(SRC_COMMON) $(OBJ_CRT0)
+	$(CC) $(DECOMPRESSOR_CFLAGS) $(SRC_LIB) $(OBJ_CRT0) $(SRC_COMMON) $(DIR_TOOLS)/decompressor.c \
+		$(SRC_BIOS) -Wl,--defsym=TEXT_START=0x52000000 \
+		-o $(DIR_BUILD)/decompressor -T riscv.lds -e decompress
+
+elf: $(ELF_BOOT) $(ELF_MAIN) $(ELF_USER) $(ELF_DECOMPRESSOR)
 
 .PHONY: elf
 
@@ -157,10 +176,10 @@ elf: $(ELF_BOOT) $(ELF_MAIN) $(ELF_USER)
 # Host Linux Rules
 # -----------------------------------------------------------------------
 
-$(ELF_CREATEIMAGE): $(SRC_CREATEIMAGE)
-	$(HOST_CC) $(SRC_CREATEIMAGE) -o $@ -ggdb -Wall
+$(ELF_CREATEIMAGE): $(SRC_CREATEIMAGE) $(SRC_LIB) $(SRC_COMMON)
+	$(HOST_CC) $(DEFLATE_CFLAGS) $(SRC_CREATEIMAGE) $(SRC_LIB) $(SRC_COMMON) -o $@ -ggdb -Wall
 
-image: $(ELF_CREATEIMAGE) $(ELF_BOOT) $(ELF_MAIN) $(ELF_USER)
+image: $(ELF_CREATEIMAGE) $(ELF_BOOT) $(ELF_DECOMPRESSOR) $(ELF_MAIN) $(ELF_USER) 
 	cd $(DIR_BUILD) && ./$(<F) --extended $(filter-out $(<F), $(^F))
 
 .PHONY: image

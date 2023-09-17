@@ -8,7 +8,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
 struct libdeflate_compressor;
 
 /*
@@ -80,8 +79,6 @@ deflate_free_compressor(struct libdeflate_compressor *compressor);
 /* ========================================================================== */
 /*                             Decompression                                  */
 /* ========================================================================== */
-
-struct libdeflate_decompressor;
 
 /*
  * libdeflate_alloc_decompressor() allocates a new decompressor that can be used

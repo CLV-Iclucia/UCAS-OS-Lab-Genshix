@@ -7,7 +7,7 @@
 #include <type.h>
 
 #define version_buf 50
-#define META_OFFSET_ADDR 0x502001f8
+#define META_OFFSET_ADDR 0x502001f4
 int version = 2; // version must between 0 and 9
 char buf[version_buf];
 #define TASK_MAXNUM 16
@@ -41,7 +41,8 @@ static void init_jmptab(void)
 __attribute__((noreturn))
 void panic(const char *msg)
 {
-    bios_putstr("bss check failed!\n\r");
+    bios_putstr("panic: ");
+    bios_putstr(msg);
     while (1)
     {
         asm volatile("wfi");
@@ -50,6 +51,7 @@ void panic(const char *msg)
 
 #define NBUFFER_SECTORS 2
 #define SEC_SIZE 512
+#define OFFSET2IDX(offset) ((offset) >> 9)
 char sd_buf[NBUFFER_SECTORS][SEC_SIZE];
 int buf_sec_no[NBUFFER_SECTORS] = {-1, -1};
 
@@ -63,7 +65,8 @@ static int random() {
 }
 
 char getc_img(uint32_t offset) {
-    int sec_no = NBYTES2SEC(offset);
+    int sec_no = OFFSET2IDX(offset);
+    if (sec_no < 0) panic("negative sector number\n\r");
     if (buf_sec_no[0] == sec_no)
         return sd_buf[0][offset & (SEC_SIZE - 1)];
     if (buf_sec_no[1] == sec_no)
@@ -75,13 +78,18 @@ char getc_img(uint32_t offset) {
 }
 
 static inline uint32_t readint_img(uint32_t offset) {
-    uint32_t lo = (getc_img(offset) & 0xff) | ((getc_img(offset + 1) & 0xff) << 8);
-    uint32_t hi = ((getc_img(offset + 2) & 0xff) << 16) | 
-                  ((getc_img(offset + 3) & 0xff) << 24);
+    char c0, c1, c2, c3;
+    c0 = getc_img(offset);
+    c1 = getc_img(offset + 1);
+    c2 = getc_img(offset + 2);
+    c3 = getc_img(offset + 3);
+    uint32_t lo = c0 | ((int)c1 << 8);
+    uint32_t hi = ((int)c2 << 16) | ((int)c3 << 24);
     return lo | hi;
 }
 
 uint32_t meta_offset;
+uint32_t name_region_offset;
 /* 
 recap my format
 
@@ -131,14 +139,32 @@ static void init_task_info(void)
         tasks[i].offset = readint_img(ptr);
         tasks[i].name_offset = readint_img(ptr + 4);
     }
-    if (ptr != tasks[0].name_offset) panic("user image corrupted!\n\r");
+    name_region_offset = tasks[0].name_offset;
+    if (ptr != name_region_offset) panic("user image corrupted!\n\r");
+}
+
+static void img_putstr(uint32_t offset) {
+    char c = getc_img(offset);
+    while(c != '\0') {
+        bios_putchar(c);
+        c = getc_img(++offset);
+    }
 }
 
 static char getchar() {
     while (1) {
-        char c = bios_getchar();
-        if (c != -1) return c;
+        int c = bios_getchar();
+        if (c != -1) { 
+            if (c >= 256) panic("Invalid getchar input encountered!\n\r");
+            bios_putchar(c);
+            if (c == '\r') bios_putchar('\n');
+            return (char)c;
+        }
     }
+}
+
+static inline char dtoc(int i) {
+    return i + '0';
 }
 
 /* ChatGPT told me to jump to the user tasks like this */
@@ -179,15 +205,26 @@ int main(void)
     char input_buf[MAX_STRLEN];
     // todo: load tasks by either task id [p1-task3] or task name [p1-task4],
     //   and then execute them.
+    bios_putstr("Available user tasks:\n");
+    for (int i = 0; i < tasknum; i++) {
+        img_putstr(tasks[i].name_offset);
+        bios_putstr("\n");
+    }
     while (1) {
+        bios_putstr("> ");
         int ptr = 0;
         char c = getchar();
-        while (c != '\n') {
+        while (c != '\r') {
             input_buf[ptr++] = c;
             c = getchar();
         }
         input_buf[ptr] = '\0';
         EntryPoint entry_point = (EntryPoint)load_task_by_name(input_buf);
+        if (entry_point == 0) {
+            bios_putstr(input_buf);
+            bios_putstr(": task not found\n\r");
+            continue;
+        }
         entry_point();
     }
     // infinite while loop, where cpu stays in a low-power state (qaqqqqqqqqqqq)
