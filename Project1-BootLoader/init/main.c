@@ -195,6 +195,10 @@ static char getchar() {
             if (c >= 256) panic("Invalid getchar input encountered!\n\r");
             bios_putchar(c);
             if (c == '\r') bios_putchar('\n');
+     //       if (c == '\b') {
+      //          bios_putchar(' ');
+       //         bios_putstr("\033[1C");
+        //    }
             return (char)c;
         }
     }
@@ -247,6 +251,7 @@ int main(void)
         img_putstr(tasks[i].name_offset);
         bios_putstr("\n");
     }
+    bios_putstr("\033[?25h");
     while (1) {
         bios_putstr("> ");
         int ptr = 0;
