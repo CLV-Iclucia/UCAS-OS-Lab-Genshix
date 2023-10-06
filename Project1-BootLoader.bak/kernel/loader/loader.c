@@ -23,6 +23,7 @@ uint64_t load_task_img(int taskid)
     uint32_t pa = entry_point, p = task_start;
     for (; p < task_end; p++, pa++)
         *(char*)pa = getc_img(p);
+    port_write("task load done\n\r");
     return entry_point;
 }
 
@@ -39,6 +40,9 @@ static int strcmp_img(const char* name, uint32_t img_name) {
 }
 
 uint64_t load_task_by_name(const char* name) {
+    port_write("loading task ");
+    port_write(name);
+    port_write("\n\r");
     for (int i = 0; i < tasknum; i++) {
         if (strcmp_img(name, tasks[i].name_offset) == 0)
             return load_task_img(i + 1);

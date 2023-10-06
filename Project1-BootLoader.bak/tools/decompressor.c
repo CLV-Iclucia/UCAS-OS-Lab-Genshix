@@ -10,7 +10,7 @@
 #define SECTOR_OFFSET(loc) ((loc) & (SECTOR_SIZE - 1))
 #define SECTOR_IDX(loc) ((loc) >> 9)
 #define STACK_BOTTOM 0x50500000
-#define ENTRY_POINT 0x52000000
+#define ENTRY_POINT 0x54000000
 #define MAX_KERNEL_SIZE 0x100000
 
 #define NBYTES2SEC(nbytes) (((nbytes) / SECTOR_SIZE) + ((nbytes) % SECTOR_SIZE != 0))
