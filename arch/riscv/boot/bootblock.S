@@ -11,6 +11,7 @@
 .equ decompressor_loc, 0x54000000
 .equ kernel, 0x50201000
 .equ decompressor_stack, 0x50500000
+
 .text
 .global main
 

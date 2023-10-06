@@ -2,7 +2,8 @@
 # Project Information
 # -----------------------------------------------------------------------
 
-PROJECT_IDX	= 1
+
+PROJECT_IDX	= 2
 
 # -----------------------------------------------------------------------
 # Host Linux Variables
@@ -21,6 +22,8 @@ DIR_UBOOT   = ~/u-boot
 HOST_CC         = gcc
 CROSS_PREFIX    = riscv64-linux-gnu-
 CC              = $(CROSS_PREFIX)gcc
+
+AR              = $(CROSS_PREFIX)ar
 OBJDUMP         = $(CROSS_PREFIX)objdump
 GDB             = $(CROSS_PREFIX)gdb
 QEMU            = $(DIR_QEMU)/riscv64-softmmu/qemu-system-riscv64
@@ -36,7 +39,7 @@ CFLAGS          = -O0 -static -fno-builtin -Wl,--build-id=none -nostdlib -nostdi
 BOOT_INCLUDE    = -I$(DIR_ARCH)/include
 BOOT_CFLAGS     = $(CFLAGS) $(BOOT_INCLUDE) -Wl,--defsym=TEXT_START=$(BOOTLOADER_ENTRYPOINT) -T riscv.lds
 
-KERNEL_INCLUDE  = -I$(DIR_ARCH)/include -Iinclude
+KERNEL_INCLUDE  = -I$(DIR_ARCH)/include -Iinclude -Idrivers
 KERNEL_CFLAGS   = $(CFLAGS) $(KERNEL_INCLUDE) -Wl,--defsym=TEXT_START=$(KERNEL_ENTRYPOINT) -T riscv.lds
 
 USER_INCLUDE    = -I$(DIR_TINYLIBC)/include
@@ -51,10 +54,14 @@ DECOMPRESSOR_CFLAGS  = -static -fno-builtin -Wl,--build-id=none -nostdlib \
                          -nostdinc -Wall -mcmodel=medany -ggdb3  \
 												 $(BOOT_INCLUDE) $(DEFLATE_CFLAGS)
 
+USER_LDFLAGS    = -L$(DIR_BUILD) -ltinyc
+
+QEMU_LOG_FILE   = $(DIR_OSLAB)/oslab-log.txt
 QEMU_OPTS       = -nographic -machine virt -m 256M -kernel $(UBOOT) -bios none \
                      -drive if=none,format=raw,id=image,file=${ELF_IMAGE} \
                      -device virtio-blk-device,drive=image \
-                     -monitor telnet::45454,server,nowait -serial mon:stdio
+                     -monitor telnet::45454,server,nowait -serial mon:stdio \
+                     -D $(QEMU_LOG_FILE) -d oslab
 QEMU_DEBUG_OPT  = -s -S
 
 # -----------------------------------------------------------------------
@@ -63,6 +70,7 @@ QEMU_DEBUG_OPT  = -s -S
 
 DIR_ARCH        = ./arch/riscv
 DIR_BUILD       = ./build
+DIR_DRIVERS     = ./drivers
 DIR_INIT        = ./init
 DIR_KERNEL      = ./kernel
 DIR_LIBS        = ./libs
@@ -83,14 +91,14 @@ USER_ENTRYPOINT         = 0x52000000
 SRC_BOOT    = $(wildcard $(DIR_ARCH)/boot/*.S)
 SRC_ARCH    = $(wildcard $(DIR_ARCH)/kernel/*.S)
 SRC_BIOS    = $(wildcard $(DIR_ARCH)/bios/*.c)
+SRC_DRIVER  = $(wildcard $(DIR_DRIVERS)/*.c)
 SRC_INIT    = $(wildcard $(DIR_INIT)/*.c)
 SRC_KERNEL  = $(wildcard $(DIR_KERNEL)/*/*.c)
 SRC_LIBS    = $(wildcard $(DIR_LIBS)/*.c)
 
-SRC_MAIN    = $(SRC_ARCH) $(SRC_INIT) $(SRC_BIOS) $(SRC_KERNEL) $(SRC_LIBS)
-
-ELF_BOOT    = $(DIR_BUILD)/bootblock
 ELF_DECOMPRESSOR = $(DIR_BUILD)/decompressor
+SRC_MAIN    = $(SRC_ARCH) $(SRC_INIT) $(SRC_BIOS) $(SRC_DRIVER) $(SRC_KERNEL) $(SRC_LIBS)
+ELF_BOOT    = $(DIR_BUILD)/bootblock
 ELF_MAIN    = $(DIR_BUILD)/main
 ELF_IMAGE   = $(DIR_BUILD)/image
 
@@ -101,11 +109,13 @@ ELF_IMAGE   = $(DIR_BUILD)/image
 SRC_CRT0    = $(wildcard $(DIR_ARCH)/crt0/*.S)
 OBJ_CRT0    = $(DIR_BUILD)/$(notdir $(SRC_CRT0:.S=.o))
 
-SRC_USER    = $(wildcard $(DIR_TEST_PROJ)/*.c)
-ELF_USER    = $(patsubst %.c, %, $(foreach file, $(SRC_USER), $(DIR_BUILD)/$(notdir $(file))))
-
 SRC_LIB     = $(LIB_DIR)/*.c
 SRC_COMMON  = $(DEFLATE_DIR)/*.c
+SRC_LIBC    = $(wildcard ./tiny_libc/*.c)
+OBJ_LIBC    = $(patsubst %.c, %.o, $(foreach file, $(SRC_LIBC), $(DIR_BUILD)/$(notdir $(file))))
+LIB_TINYC   = $(DIR_BUILD)/libtinyc.a
+SRC_USER    = $(wildcard $(DIR_TEST_PROJ)/*.c)
+ELF_USER    = $(patsubst %.c, %, $(foreach file, $(SRC_USER), $(DIR_BUILD)/$(notdir $(file))))
 # -----------------------------------------------------------------------
 # Host Linux Tools Source Files
 # -----------------------------------------------------------------------
@@ -133,7 +143,7 @@ asm: $(ELF_BOOT) $(ELF_MAIN) $(ELF_USER)
 	for elffile in $^; do $(OBJDUMP) -d $$elffile > $(notdir $$elffile).txt; done
 
 gdb:
-	$(GDB) $(ELF_MAIN)
+	$(GDB) $(ELF_MAIN) -ex "target remote:1234"
 
 run:
 	$(QEMU) $(QEMU_OPTS)
@@ -159,16 +169,22 @@ $(ELF_MAIN): $(SRC_MAIN) riscv.lds
 $(OBJ_CRT0): $(SRC_CRT0)
 	$(CC) $(USER_CFLAGS) -I$(DIR_ARCH)/include -c $< -o $@
 
-$(DIR_BUILD)/%: $(DIR_TEST_PROJ)/%.c $(OBJ_CRT0) riscv.lds
-	$(CC) $(USER_CFLAGS) -o $@ $(OBJ_CRT0) $< -Wl,--defsym=TEXT_START=$(USER_ENTRYPOINT) -T riscv.lds
-	$(eval USER_ENTRYPOINT := $(shell python3 -c "print(hex(int('$(USER_ENTRYPOINT)', 16) + int('0x10000', 16)))"))
-
 $(ELF_DECOMPRESSOR): $(DIR_TOOLS)/decompressor.c $(SRC_BIOS) $(SRC_LIB) $(SRC_COMMON) $(OBJ_CRT0)
 	$(CC) $(DECOMPRESSOR_CFLAGS) $(SRC_LIB) $(OBJ_CRT0) $(SRC_COMMON) $(DIR_TOOLS)/decompressor.c \
 		$(SRC_BIOS) -Wl,--defsym=TEXT_START=0x52000000 \
 		-o $(DIR_BUILD)/decompressor -T riscv.lds -e decompress
 
-elf: $(ELF_BOOT) $(ELF_MAIN) $(ELF_USER) $(ELF_DECOMPRESSOR)
+$(LIB_TINYC): $(OBJ_LIBC)
+	$(AR) rcs $@ $^
+
+$(DIR_BUILD)/%.o: $(DIR_TINYLIBC)/%.c
+	$(CC) $(USER_CFLAGS) -c $< -o $@
+
+$(DIR_BUILD)/%: $(DIR_TEST_PROJ)/%.c $(OBJ_CRT0) $(LIB_TINYC) riscv.lds
+	$(CC) $(USER_CFLAGS) -o $@ $(OBJ_CRT0) $< $(USER_LDFLAGS) -Wl,--defsym=TEXT_START=$(USER_ENTRYPOINT) -T riscv.lds
+	$(eval USER_ENTRYPOINT := $(shell python3 -c "print(hex(int('$(USER_ENTRYPOINT)', 16) + int('0x10000', 16)))"))
+
+elf: $(ELF_DECOMPRESSOR) $(ELF_BOOT) $(ELF_MAIN) $(LIB_TINYC) $(ELF_USER)
 
 .PHONY: elf
 
