@@ -9,7 +9,7 @@ PROJECT_IDX	= 1
 # -----------------------------------------------------------------------
 
 SHELL       = /bin/sh
-DISK        = /dev/sdb
+DISK        = /dev/sda
 TTYUSB1     = /dev/ttyUSB1
 DIR_QEMU    = ~/qemu
 DIR_UBOOT   = ~/u-boot

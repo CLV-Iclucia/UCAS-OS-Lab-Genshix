@@ -8,7 +8,7 @@
 // BIOS function entry (jump here to use BIOS APIs)
 .equ bios_func_entry, 0x50150000
 .equ decompressor_offset, 0x1000
-.equ decompressor_loc, 0x52000000
+.equ decompressor_loc, 0x54000000
 .equ kernel, 0x50201000
 .equ decompressor_stack, 0x50500000
 .text
@@ -24,9 +24,9 @@ main:
 	// load decompressor
   // decompressor_size = user_start_offset - os_size - 512
     la t0, user_start_offset_loc
-    lw s2, 0(t0)
+    ld s2, 0(t0)
     la t0, os_size_loc
-    lw t1, 0(t0)
+    ld t1, 0(t0)
     sub s2, s2, t1     // s2 is the kernel offset
     addi t0, s2, -512
     srai a1, t0, 9 // #sectors
@@ -38,7 +38,7 @@ main:
     la sp, decompressor_stack
     mv a0, s2
     la t0, os_size_loc
-    lw a1, 0(t0)
+    ld a1, 0(t0)
     la t0, decompressor_loc
     jalr ra, 0(t0)
     bnez a0, done
@@ -53,7 +53,7 @@ done:
     la a0, done_msg
     jal bios_func_entry
     la t0, decompressor_loc
-    sw zero, 0(t0)
+    sd zero, 0(t0)
   // now we can jump to the kernel
     j kernel
 	/************************************************************/

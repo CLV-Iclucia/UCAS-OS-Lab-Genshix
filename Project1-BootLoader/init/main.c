@@ -240,7 +240,7 @@ int main(void)
             buf[i] = output_val[output_val_pos++];
         }
     }
-    bios_putstr("Hello Genshinx!\n\r");
+    bios_putstr("Hello Genshix!\n\r");
     bios_putstr(buf);
     char input_buf[MAX_STRLEN];
     // todo: load tasks by either task id [p1-task3] or task name [p1-task4],
