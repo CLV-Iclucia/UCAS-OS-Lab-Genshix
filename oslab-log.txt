@@ -171,27 +171,3 @@ process 4 (lock1) is unblocked
 lock 0 held by lock1
 process 5 (lock2) tries to acquire lock 0
 process 5 (lock2) is blocked
-process 4 (lock1) is releasing lock 0
-process 4 (lock1) released lock 0
-process 5 (lock2) is unblocked
-lock 0 held by lock2
-process 4 (lock1) tries to acquire lock 0
-process 4 (lock1) is blocked
-process 5 (lock2) is releasing lock 0
-process 5 (lock2) released lock 0
-process 4 (lock1) is unblocked
-lock 0 held by lock1
-process 5 (lock2) tries to acquire lock 0
-process 5 (lock2) is blocked
-process 4 (lock1) is releasing lock 0
-process 4 (lock1) released lock 0
-process 5 (lock2) is unblocked
-lock 0 held by lock2
-process 4 (lock1) tries to acquire lock 0
-process 4 (lock1) is blocked
-process 5 (lock2) is releasing lock 0
-process 5 (lock2) released lock 0
-process 4 (lock1) is unblocked
-lock 0 held by lock1
-process 5 (lock2) tries to acquire lock 0
-process 5 (lock2) is blocked
