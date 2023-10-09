@@ -28,7 +28,6 @@
 int version = 2; // version must between 0 and 9
 char buf[version_buf];
 #define TASK_MAXNUM 16
-#define MAX_STRLEN 128
 uint32_t tasknum;
 // task info array
 task_info_t tasks[TASK_MAXNUM];
@@ -105,6 +104,7 @@ static void init_jmptab(void)
     jmptab[MUTEX_INIT]      = (long (*)())do_mutex_lock_init;
     jmptab[MUTEX_ACQ]       = (long (*)())do_mutex_lock_acquire;
     jmptab[MUTEX_RELEASE]   = (long (*)())do_mutex_lock_release;
+    jmptab[REFLUSH]         = (long (*)())screen_reflush;
 }
 __attribute__((noreturn))
 void panic(const char *msg)
@@ -235,13 +235,43 @@ static void init_pcb_stack(
 
 }
 
+static char init_tasks[TASK_MAXNUM][NAME_MAXLEN] = {
+    "print2",
+    "print1",
+    "fly",
+    "lock1",
+    "lock2",
+};
+
 static void init_pcb(void)
 {
     /* TODO: [p2-task1] load needed tasks and init their corresponding PCB */
-
-
+    // add all the init_tasks into the ready_queue
+    // this process called "init" is also added to the ready_queue
+    // for all the tasks in the init_tasks
+    printl("initing tasks...\n");
+    for (int i = 0; i < tasknum; i++) {
+        // load the task into the memory
+        if (init_tasks[i][0] == '\0') continue;
+        printl("loading task %s\n", init_tasks[i]);
+        uint32_t load_addr = (uint32_t)load_task_by_name(init_tasks[i]);
+        pcb_t* p = new_pcb(init_tasks[i]);
+        p->ctx->ra = load_addr;
+        p->user_sp = p->ctx->sp = allocUserPage(1);
+        p->status = TASK_READY;
+        if (p == NULL) panic("new_pcb failed!\n\r");
+        insert_pcb(&ready_queue, p);
+        printl("task %s loaded\n", init_tasks[i]);
+    }
     /* TODO: [p2-task1] remember to initialize 'current_running' */
-
+    insert_pcb(&ready_queue, &pid0_pcb);
+    current_running = &pid0_pcb;
+    if (current_running->list.next == &ready_queue)
+        next_running = list_pcb(ready_queue.next);
+    else
+        next_running = list_pcb(current_running->list.next);
+    dump_all_proc();
+    printl("init tasks finished\n");
 }
 
 static void init_syscall(void)
@@ -261,11 +291,7 @@ typedef void (*EntryPoint)();
 
 static void init_task_info(void)
 {
-    // TODO: [p1-task4] Init 'tasks' array via reading app-info sector
-    // NOTE: You need to get some related arguments from bootblock first
     bios_putstr("initing tasks...\n\r");
-    // todo: [p1-task4] init 'tasks' array via reading app-info sector
-    // note: you need to get some related arguments from bootblock first
     meta_offset = *(uint32_t*)(META_OFFSET_ADDR);
     uint32_t ptr = meta_offset;
     tasknum = readint_img(ptr);
@@ -282,7 +308,6 @@ static void init_task_info(void)
     }
     name_region_offset = tasks[0].name_offset;
     if (ptr != name_region_offset) panic("user image corrupted!\n\r");
-
 }
 
 int main(void)
@@ -292,13 +317,11 @@ int main(void)
       panic("bss check failed!\n\r");
     // Init jump table provided by kernel and bios(ΦωΦ)
     init_jmptab();
-
     // Init task information (〃'▽'〃)
     init_task_info();
-
+    init_pcb_pool();
     // Init Process Control Blocks |•'-'•) ✧
     init_pcb();
-
     printk("> [INIT] PCB initialization succeeded.\n");
 
     // Read CPU frequency (｡•ᴗ-)_
@@ -322,12 +345,6 @@ int main(void)
 
     // TODO: [p2-task4] Setup timer interrupt and enable all interrupt globally
     // NOTE: The function of sstatus.sie is different from sie's
-    
-
-
-    // TODO: Load tasks by either task id [p1-task3] or task name [p1-task4],
-    //   and then execute them.
-
     // Infinite while loop, where CPU stays in a low-power state (QAQQQQQQQQQQQ)
     while (1)
     {

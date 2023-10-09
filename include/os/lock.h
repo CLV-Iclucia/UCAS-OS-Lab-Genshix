@@ -31,11 +31,21 @@
 #include <os/list.h>
 
 #define LOCK_NUM 16
-
+// bitmask for all the locks
+#define LOCK_MASK_ALL 0xffff
+#define LOCK_MASK_NONE 0x0000
+#define LOCK_MASK(idx) (1 << (idx))
 typedef enum {
     UNLOCKED,
     LOCKED,
 } lock_status_t;
+
+static inline const char* lock_status_str(lock_status_t status)
+{
+    if (status == UNLOCKED)
+        return "UNLOCKED";
+    else return "LOCKED";
+}
 
 typedef struct spin_lock
 {
@@ -60,6 +70,7 @@ int do_mutex_lock_init(int key);
 void do_mutex_lock_acquire(int mlock_idx);
 void do_mutex_lock_release(int mlock_idx);
 
+void dump_lock(int lock_idx);
 /************************************************************/
 /* Do not touch this comment. Reserved for future projects. */
 /************************************************************/

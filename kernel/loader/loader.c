@@ -9,11 +9,6 @@ extern char getc_img(uint32_t offset);
 extern void panic(const char *);
 uint64_t load_task_img(int taskid)
 {
-    /**
-     * TODO:
-     * 1. [p1-task3] load task from image via task id, and return its entrypoint
-     * 2. [p1-task4] load task via task name, thus the arg should be 'char *taskname'
-     */
     if (taskid < 1 || taskid > tasknum) {
         panic("taskid out of range!\n\r");
     }

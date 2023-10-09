@@ -14,6 +14,7 @@ DISK        = /dev/sda
 TTYUSB1     = /dev/ttyUSB1
 DIR_QEMU    = ~/qemu
 DIR_UBOOT   = ~/u-boot
+DIR_OSLAB   = ~/ucas-os
 
 # -----------------------------------------------------------------------
 # Build and Debug Tools

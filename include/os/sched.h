@@ -31,8 +31,10 @@
 
 #include <type.h>
 #include <os/list.h>
+#include <os/lock.h>
 
 #define NUM_MAX_TASK 16
+#define NAME_MAXLEN 16
 
 /* used to save register infomation */
 typedef struct regs_context
@@ -51,7 +53,20 @@ typedef struct regs_context
 typedef struct switchto_context
 {
     /* Callee saved registers.*/
-    reg_t regs[14];
+    reg_t ra;
+    reg_t sp;
+    reg_t s0;
+    reg_t s1;
+    reg_t s2;
+    reg_t s3;
+    reg_t s4;
+    reg_t s5;
+    reg_t s6;
+    reg_t s7;
+    reg_t s8;
+    reg_t s9;
+    reg_t s10;
+    reg_t s11;
 } switchto_context_t;
 
 typedef enum {
@@ -61,6 +76,15 @@ typedef enum {
     TASK_EXITED,
 } task_status_t;
 
+static inline const char* task_status_str(task_status_t status) {
+    switch (status) {
+        case TASK_BLOCKED: return "BLOCKED";
+        case TASK_RUNNING: return "RUNNING";
+        case TASK_READY: return "READY";
+        case TASK_EXITED: return "EXITED";
+        default: return "UNKNOWN";
+    }
+}
 /* Process Control Block */
 typedef struct pcb
 {
@@ -84,8 +108,17 @@ typedef struct pcb
 
     /* time(seconds) to wake up sleeping PCB */
     uint64_t wakeup_time;
-
+    switchto_context_t* ctx;
+    char name[NAME_MAXLEN];
+    int lock_bitmask;   // locks held by this process
 } pcb_t;
+
+#define offsetof(type, member) ((size_t)(&((type*)0)->member))
+#define HOLD_LOCK(proc, idx) ((proc)->lock_bitmask & LOCK_MASK(idx))
+// given a pointer to a list_node_t, get the pcb_t that contains it
+static inline pcb_t* list_pcb(list_node_t* ptr) {
+    return (pcb_t*)((char*)ptr - offsetof(pcb_t, list));
+}
 
 /* ready queue to run */
 extern list_head ready_queue;
@@ -95,19 +128,30 @@ extern list_head sleep_queue;
 
 /* current running task PCB */
 extern pcb_t * volatile current_running;
+extern pcb_t * volatile next_running;
 extern pid_t process_id;
 
 extern pcb_t pcb[NUM_MAX_TASK];
 extern pcb_t pid0_pcb;
 extern const ptr_t pid0_stack;
 
-extern void switch_to(pcb_t *prev, pcb_t *next);
+extern void switch_to(switchto_context_t *prev, switchto_context_t *next);
+// a inline func myproc to get the current_running
+static inline pcb_t* volatile myproc() {
+    return current_running;
+}
+void init_pcb_pool();
 void do_scheduler(void);
 void do_sleep(uint32_t);
 
 void do_block(list_node_t *, list_head *queue);
 void do_unblock(list_node_t *);
-
+pcb_t* alloc_pcb();
+pcb_t* new_pcb(const char* name);
+void insert_pcb(list_head* queue, pcb_t* pcb);
+void dump_all_proc();
+void dump_context(switchto_context_t* ctx);
+void dump_pcb(pcb_t* p);
 /************************************************************/
 /* Do not touch this comment. Reserved for future projects. */
 /************************************************************/

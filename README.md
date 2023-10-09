@@ -1,5 +1,7 @@
 # Genshix: a Simple Unix-like OS
 
+## Currently working on Project-2
+
 ## How to build and boot up
 
 1. Modify the Makefile so that the paths of toolchains match those on your PC.
