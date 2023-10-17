@@ -34,7 +34,7 @@
 // bitmask for all the locks
 #define LOCK_MASK_ALL 0xffff
 #define LOCK_MASK_NONE 0x0000
-#define LOCK_MASK(idx) (1 << (idx))
+#define LOCK_MASK(idx) (1ll << (idx))
 typedef enum {
     UNLOCKED,
     LOCKED,

@@ -88,7 +88,8 @@ void dump_context(switchto_context_t *ctx)
     printl("s11: %x\n", ctx->s11);
 }
 
-void dump_pcb(pcb_t* p) {
+void dump_pcb(pcb_t* p) 
+{
     printl("dumping process:\n-------------------------------\n");
     printl("pid: %d\n", p->pid);
     printl("name: %s\n", p->name);
@@ -133,8 +134,9 @@ void do_scheduler(void)
             next_running = list_pcb(ready_queue.next);
         else
             next_running = list_pcb(current_running->list.next);
+        assert(current_running->status == TASK_READY);
         current_running->status = TASK_RUNNING;
-        log_block(PROC, dump_pcb(current_running));
+    //    log_block(PROC, dump_pcb(current_running));
         switch_to(&sched_ctx, current_running->ctx);
     }
 }
@@ -153,8 +155,8 @@ void do_sleep(void)
     if (argint(0, (int*)&sleep_time) < 0)
         return;
     pcb_t* p = myproc();
-    log_line(PROC, "process %d (%s) is sleeping\n", p->pid, p->name);
-    p->wakeup_time = get_timer() + sleep_time;
+    log_line(PROC, "%d: process %d (%s) is sleeping\n", get_timer(), p->pid, p->name);
+    p->wakeup_time = get_ticks() + sleep_time * time_base;
     do_block(&(p->list), &sleep_queue);
 }
 
@@ -162,6 +164,7 @@ void do_block(list_node_t *pcb_node, list_head *queue)
 {
     pcb_t* p = list_pcb(pcb_node);
     log_line(PROC, "process %d (%s) is blocked\n", p->pid, p->name);
+    assert(p->status != TASK_BLOCKED);
     p->status = TASK_BLOCKED;
     LIST_REMOVE(pcb_node);
     LIST_INSERT_TAIL(queue, pcb_node);
@@ -171,8 +174,9 @@ void do_block(list_node_t *pcb_node, list_head *queue)
 void do_unblock(list_node_t *pcb_node)
 {
     pcb_t* p = list_pcb(pcb_node);
+    assert(p->status == TASK_BLOCKED);
     p->status = TASK_READY;
-    log_line(PROC, "process %d (%s) is unblocked", p->pid, p->name);
+    log_line(PROC, "%d process %d (%s) is unblocked", get_timer(), p->pid, p->name);
     LIST_REMOVE(pcb_node);
     // a special case
     // if the current_running is at the tail of the queue
