@@ -1,0 +1,147 @@
+loading task print2
+loading task print1
+loading task fly
+loading task lock1
+loading task lock2
+loading task sleep
+[PROC LOG BLOCK] {
+dumping processes in ready queue:
+dumping process:
+-------------------------------
+pid: 6
+name: sleep
+kernel_sp: 5050c000
+user_sp: 5250e000
+status: READY
+ra: 50202608
+sp: 5050c000
+s0: 0
+s1: 0
+s2: 0
+s3: 0
+s4: 0
+s5: 0
+s6: 0
+s7: 0
+s8: 0
+s9: 0
+s10: 0
+s11: 0
+holding locks:
+-------------------------------
+dumping process:
+-------------------------------
+pid: 5
+name: lock2
+kernel_sp: 5050a000
+user_sp: 5250c000
+status: READY
+ra: 50202608
+sp: 5050a000
+s0: 0
+s1: 0
+s2: 0
+s3: 0
+s4: 0
+s5: 0
+s6: 0
+s7: 0
+s8: 0
+s9: 0
+s10: 0
+s11: 0
+holding locks:
+-------------------------------
+dumping process:
+-------------------------------
+pid: 4
+name: lock1
+kernel_sp: 50508000
+user_sp: 5250a000
+status: READY
+ra: 50202608
+sp: 50508000
+s0: 0
+s1: 0
+s2: 0
+s3: 0
+s4: 0
+s5: 0
+s6: 0
+s7: 0
+s8: 0
+s9: 0
+s10: 0
+s11: 0
+holding locks:
+-------------------------------
+dumping process:
+-------------------------------
+pid: 3
+name: fly
+kernel_sp: 50506000
+user_sp: 52508000
+status: READY
+ra: 50202608
+sp: 50506000
+s0: 0
+s1: 0
+s2: 0
+s3: 0
+s4: 0
+s5: 0
+s6: 0
+s7: 0
+s8: 0
+s9: 0
+s10: 0
+s11: 0
+holding locks:
+-------------------------------
+dumping process:
+-------------------------------
+pid: 2
+name: print1
+kernel_sp: 50504000
+user_sp: 52505000
+status: READY
+ra: 50202608
+sp: 50504000
+s0: 0
+s1: 0
+s2: 0
+s3: 0
+s4: 0
+s5: 0
+s6: 0
+s7: 0
+s8: 0
+s9: 0
+s10: 0
+s11: 0
+holding locks:
+-------------------------------
+dumping process:
+-------------------------------
+pid: 1
+name: print2
+kernel_sp: 50502000
+user_sp: 52503000
+status: READY
+ra: 50202608
+sp: 50502000
+s0: 0
+s1: 0
+s2: 0
+s3: 0
+s4: 0
+s5: 0
+s6: 0
+s7: 0
+s8: 0
+s9: 0
+s10: 0
+s11: 0
+holding locks:
+-------------------------------
+}
