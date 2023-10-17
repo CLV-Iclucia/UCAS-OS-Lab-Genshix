@@ -41,21 +41,26 @@ void user_trap_ret() {
 void handle_irq_timer(regs_context_t *regs, uint64_t stval, uint64_t scause)
 {
     // TODO: [p2-task4] clock interrupt handler.
-    // Note: use bios_set_timer to reset the timer and remember to reschedule
+    disable_preempt();
+    printk("It's a trap!\n");
+    while(1);
 }
 
 void init_exception()
 {
     /* TODO: [p2-task3] initialize exc_table */
     /* NOTE: handle_syscall, handle_other, etc.*/
-    setup_exception();
     irq_table[IRQC_S_TIMER] = handle_irq_timer;
+    irq_table[IRQC_U_TIMER] = handle_irq_timer;
     exc_table[EXCC_SYSCALL] = handle_syscall;
-    /* TODO: [p2-task4] initialize irq_table */
-    /* NOTE: handle_int, handle_other, etc.*/
-
-    /* TODO: [p2-task3] set up the entrypoint of exceptions */
-
+    exc_table[EXCC_BREAKPOINT] = handle_other;
+    exc_table[EXCC_INST_MISALIGNED] = handle_other;
+    exc_table[EXCC_INST_ACCESS] = handle_other;
+    exc_table[EXCC_INST_PAGE_FAULT] = handle_other;
+    exc_table[EXCC_LOAD_ACCESS] = handle_other;
+    exc_table[EXCC_LOAD_PAGE_FAULT] = handle_other;
+    exc_table[EXCC_STORE_PAGE_FAULT] = handle_other;
+    setup_exception();
 }
 
 void handle_other(regs_context_t *regs, uint64_t stval, uint64_t scause)

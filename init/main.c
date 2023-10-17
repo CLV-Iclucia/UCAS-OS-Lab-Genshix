@@ -89,7 +89,8 @@ char sd_buf[NBUFFER_SECTORS][SEC_SIZE];
 int buf_sec_no[NBUFFER_SECTORS] = {-1, -1};
 
 /* randomly return 0 or 1 for replacement */
-static int random() {
+static int random() 
+{
     static int gen = 0x114514;
     gen ^= gen << 3;
     gen ^= gen >> 5;
@@ -97,7 +98,8 @@ static int random() {
     return gen & 1;
 }
 
-char getc_img(uint32_t offset) {
+char getc_img(uint32_t offset) 
+{
     int sec_no = OFFSET2IDX(offset);
     if (sec_no < 0) panic("negative sector number\n\r");
     if (buf_sec_no[0] == sec_no)
@@ -110,7 +112,8 @@ char getc_img(uint32_t offset) {
     return sd_buf[evict][offset & (SEC_SIZE - 1)];
 }
 
-static inline uint32_t readint_img(uint32_t offset) {
+static inline uint32_t readint_img(uint32_t offset) 
+{
     char c0, c1, c2, c3;
     c0 = getc_img(offset);
     c1 = getc_img(offset + 1);
@@ -123,7 +126,8 @@ static inline uint32_t readint_img(uint32_t offset) {
 
 uint32_t meta_offset;
 uint32_t name_region_offset;
-static void img_putstr(uint32_t offset) {
+static void img_putstr(uint32_t offset) 
+{
     char c = getc_img(offset);
     while(c != '\0') {
         bios_putchar(c);
@@ -131,7 +135,8 @@ static void img_putstr(uint32_t offset) {
     }
 }
 
-static char getchar() {
+static char getchar() 
+{
     while (1) {
         int c = bios_getchar();
         if (c != -1) { 
@@ -170,7 +175,8 @@ static void init_pcb_stack(
 
 }
 
-static char* init_tasks[] = {
+static char* init_tasks[] = 
+{
     "print2",
     "print1",
     "fly",
@@ -276,7 +282,7 @@ int main(void)
 
     // Read CPU frequency (｡•ᴗ-)_
     time_base = bios_read_fdt(TIMEBASE);
-
+    set_timer(time_base);
     // Init lock mechanism o(´^｀)o
     init_locks();
     printk("> [INIT] Lock mechanism initialization succeeded.\n");
@@ -296,14 +302,21 @@ int main(void)
     // TODO: [p2-task4] Setup timer interrupt and enable all interrupt globally
     // NOTE: The function of sstatus.sie is different from sie's
     // Infinite while loop, where CPU stays in a low-power state (QAQQQQQQQQQQQ)
+    printk("Are you ready for timer interrupts?\nPress any key to continue...\n");
+    getchar();
+    printk("Are you ready for all the weird bugs ahead?\nPress any key to continue...\n");
+    getchar();
+    printk("Good luck, then.\n");
+    latency(2);
+    screen_clear();
     while (1)
     {
         // If you do non-preemptive scheduling, it's used to surrender control
-        do_scheduler();
+    //    do_scheduler();
 
         // If you do preemptive scheduling, they're used to enable CSR_SIE and wfi
-        // enable_preempt();
-        // asm volatile("wfi");
+        enable_preempt();
+        asm volatile("wfi"); 
     }
 
     return 0;

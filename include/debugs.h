@@ -3,7 +3,7 @@
 
 #define LOG_PROC_ENABLED true
 #define LOG_LOCK_ENABLED false
-#define LOG_INTR_ENABLED false
+#define LOG_INTR_ENABLED true
 #define LOG_SYSCALL_ENABLED false
 
 #define log(OPT, fmt, ...) \
@@ -46,3 +46,5 @@ do {\
     while(1);\
 } while(0)
 #endif
+
+void kernel_self_check();
