@@ -1,7 +1,8 @@
+#include <os/time.h>
 #include <os/list.h>
 #include <os/sched.h>
+#include <sys/syscall.h>
 #include <type.h>
-
 uint64_t time_elapsed = 0;
 uint64_t time_base = 0;
 
@@ -31,7 +32,18 @@ void latency(uint64_t time)
     return;
 }
 
+syscall_transfer_i_v(do_get_tick, get_ticks)
+syscall_transfer_i_v(do_get_timebase, get_time_base)
+
 void check_sleeping(void)
 {
-    // TODO: [p2-task3] Pick out tasks that should wake up from the sleep queue
+    list_node_t* p = sleep_queue.next;
+    list_node_t* p_next = p->next;
+    while (p != &sleep_queue) {
+        pcb_t* pcb = list_pcb(p);
+        if (pcb->wakeup_time <= get_timer())
+            do_unblock(p);
+        p = p_next;
+        p_next = p->next;
+    }
 }

@@ -70,7 +70,8 @@ extern void interrupt_helper(regs_context_t *regs, uint64_t stval, uint64_t scau
 extern void exception_handler_entry(void);
 extern void init_exception();
 extern void setup_exception();
-
+extern void ret_from_exception(regs_context_t* trapframe);
+extern void user_trap_ret();
 extern void handle_irq_timer(regs_context_t *regs, uint64_t stval, uint64_t scause);
 extern void handle_other(regs_context_t *regs, uint64_t stval, uint64_t scause);
 extern void handle_syscall(regs_context_t *regs, uint64_t stval, uint64_t scause);
@@ -79,5 +80,10 @@ extern void enable_interrupt(void);
 extern void disable_interrupt(void);
 extern void enable_preempt(void);
 extern void disable_preempt(void);
+
+static inline bool is_supervisor() 
+{
+    return true;
+}
 
 #endif

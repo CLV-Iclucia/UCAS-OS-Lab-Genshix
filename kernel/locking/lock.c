@@ -1,8 +1,10 @@
 #include <os/lock.h>
 #include <os/sched.h>
 #include <os/list.h>
+#include <sys/syscall.h>
 #include <assert.h>
 #include <atomic.h>
+#include <debugs.h>
 
 mutex_lock_t mlocks[LOCK_NUM];
 // a queue to store the available lock indices
@@ -70,17 +72,18 @@ void do_mutex_lock_acquire(int mlock_idx)
     /* TODO: [p2-task2] acquire mutex lock */
     assert(mlock_idx >= 0 && mlock_idx < LOCK_NUM);
     pcb_t* p = myproc();
-    printl("process %d (%s) tries to acquire lock %d\n", p->pid, p->name, mlock_idx);
+    log_line(LOCK, "process %d (%s) tries to acquire lock %d\n", p->pid, p->name, mlock_idx);
     assert_msg(!HOLD_LOCK(p, mlock_idx), 
         "lock is already held by the current process!");
     // print a log
     if (mlocks[mlock_idx].lock.status == UNLOCKED) {
         mlocks[mlock_idx].lock.status = LOCKED;
         p->lock_bitmask |= LOCK_MASK(mlock_idx);
-        printl("lock %d held by %s\n", mlock_idx, p->name);
+        log_line(LOCK, "lock %d held by %s", mlock_idx, p->name);
     }
     else do_block(&(p->list), &mlocks[mlock_idx].block_queue);
 }
+
 
 void do_mutex_lock_release(int mlock_idx)
 {
@@ -88,12 +91,12 @@ void do_mutex_lock_release(int mlock_idx)
     assert(mlock_idx >= 0 && mlock_idx < LOCK_NUM);
     assert_msg(mlocks[mlock_idx].lock.status == LOCKED, "releasing an unlocked lock!");
     pcb_t* p = myproc();
-    printl("process %d (%s) is releasing lock %d\n", p->pid, p->name, mlock_idx);
+    log_line(LOCK, "process %d (%s) is releasing lock %d\n", p->pid, p->name, mlock_idx);
     assert_msg(HOLD_LOCK(p, mlock_idx), "lock is not held by the current process!");
     mlocks[mlock_idx].lock.status = UNLOCKED;
     p->lock_bitmask ^= LOCK_MASK(mlock_idx);
     // if no proc is blocking on the lock, push the lock index to the queue and return
-    printl("process %d (%s) released lock %d\n", p->pid, p->name, mlock_idx);
+    log_line(LOCK, "process %d (%s) released lock %d\n", p->pid, p->name, mlock_idx);
     if (LIST_EMPTY(mlocks[mlock_idx].block_queue)) {
         push_lock_index(mlock_idx);
         return;
@@ -104,9 +107,12 @@ void do_mutex_lock_release(int mlock_idx)
     assert_msg(!HOLD_LOCK(np, mlock_idx), "the awoken process holds the lock");
     mlocks[mlock_idx].lock.status = LOCKED;
     np->lock_bitmask |= LOCK_MASK(mlock_idx);
-    printl("lock %d held by %s\n", mlock_idx, np->name);
+    log_line(LOCK, "lock %d held by %s\n", mlock_idx, np->name);
 }
 
+syscall_transfer_i_i(do_mutex_init, do_mutex_lock_init)
+syscall_transfer_v_i(do_mutex_acquire, do_mutex_lock_acquire)
+syscall_transfer_v_i(do_mutex_release, do_mutex_lock_release)
 void dump_lock(int mlock_idx)
 {
     assert(mlock_idx >= 0 && mlock_idx < LOCK_NUM);

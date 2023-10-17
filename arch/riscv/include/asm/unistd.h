@@ -11,5 +11,6 @@
 #define SYSCALL_LOCK_INIT 40
 #define SYSCALL_LOCK_ACQ 41
 #define SYSCALL_LOCK_RELEASE 42
+#define SYSCALL_STRACE 43        // In the future maybe I need to change this
 
 #endif

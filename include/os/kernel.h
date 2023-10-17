@@ -79,5 +79,4 @@ static inline uint64_t bios_read_fdt(enum FDT_TYPE type)
     return call_jmptab(READ_FDT, (long)type, 0, 0, 0, 0);
 }
 /************************************************************/
-
 #endif

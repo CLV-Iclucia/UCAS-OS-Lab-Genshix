@@ -4,21 +4,23 @@
 #include <os/sched.h>
 #include <os/time.h>
 #include <os/mm.h>
+#include <sys/syscall.h>
 #include <screen.h>
 #include <printk.h>
 #include <assert.h>
-
+#include <debugs.h>
 pcb_t pcb[NUM_MAX_TASK];
 switchto_context_t swtch_ctx[NUM_MAX_TASK];
-const ptr_t pid0_stack = INIT_KERNEL_STACK + PAGE_SIZE;
-switchto_context_t pid0_ctx;
-pcb_t pid0_pcb = {
-    .name = "init",
-    .status = TASK_RUNNING,
+const ptr_t sched_kernel_stack = FREEMEM_KERNEL;
+const ptr_t sched_user_stack = FREEMEM_USER;
+switchto_context_t sched_ctx;
+pcb_t sched_pcb = {
+    .name = "scheduler",
+    .status = TASK_READY,
     .pid = 0,
-    .kernel_sp = (ptr_t)pid0_stack,
-    .user_sp = (ptr_t)pid0_stack,
-    .ctx = &pid0_ctx,
+    .kernel_sp = (ptr_t)sched_kernel_stack,
+    .user_sp = (ptr_t)sched_user_stack,
+    .ctx = &sched_ctx,
 };
 static int pcb_pool_queue[NUM_MAX_TASK];
 static int pcb_pool_queue_head = 0;
@@ -120,56 +122,65 @@ void insert_pcb(list_head* queue, pcb_t* pcb)
 void do_scheduler(void)
 {
     // TODO: [p2-task3] Check sleep queue to wake up PCBs
-
     /************************************************************/
     /* Do not touch this comment. Reserved for future projects. */
     /************************************************************/
-
     // TODO: [p2-task1] Modify the current_running pointer.
-    //printl("scheduling, current running process:\n");
-    assert_msg(ready_queue.next != &ready_queue, "ready queue is empty!\n");
-//    dump_pcb(current_running);
-    pcb_t* old_proc = current_running;
-    current_running = next_running;
-    if (current_running->list.next == &ready_queue)
-        next_running = list_pcb(ready_queue.next);
-    else
-        next_running = list_pcb(current_running->list.next);
-    old_proc->status = TASK_READY;
-    assert_msg(current_running->status == TASK_READY, "current running process is not ready!\n");
-    //printl("switching to process:\n");
-    current_running->status = TASK_RUNNING;
- //   dump_pcb(current_running);
-    // TODO: [p2-task1] switch_to current_running
-    switch_to(old_proc->ctx, current_running->ctx);
+    while (1) {
+        check_sleeping();
+        current_running = next_running;
+        if (current_running->list.next == &ready_queue)
+            next_running = list_pcb(ready_queue.next);
+        else
+            next_running = list_pcb(current_running->list.next);
+        current_running->status = TASK_RUNNING;
+        log_block(PROC, dump_pcb(current_running));
+        switch_to(&sched_ctx, current_running->ctx);
+    }
 }
 
-void do_sleep(uint32_t sleep_time)
+void do_yield(void)
 {
-    // TODO: [p2-task3] sleep(seconds)
-    // NOTE: you can assume: 1 second = 1 `timebase` ticks
-    // 1. block the current_running
-    // 2. set the wake up time for the blocked task
-    // 3. reschedule because the current_running is blocked.
+    pcb_t* p = myproc();
+    log_line(PROC, "process %d (%s) is yielding\n", p->pid, p->name);
+    p->status = TASK_READY;
+    switch_to(current_running->ctx, &sched_ctx);
+}
+
+void do_sleep(void)
+{
+    uint32_t sleep_time;
+    if (argint(0, (int*)&sleep_time) < 0)
+        return;
+    pcb_t* p = myproc();
+    log_line(PROC, "process %d (%s) is sleeping\n", p->pid, p->name);
+    p->wakeup_time = get_timer() + sleep_time;
+    do_block(&(p->list), &sleep_queue);
 }
 
 void do_block(list_node_t *pcb_node, list_head *queue)
 {
-    // TODO: [p2-task2] block the pcb task into the block queue
     pcb_t* p = list_pcb(pcb_node);
-    printl("process %d (%s) is blocked\n", p->pid, p->name);
+    log_line(PROC, "process %d (%s) is blocked\n", p->pid, p->name);
     p->status = TASK_BLOCKED;
     LIST_REMOVE(pcb_node);
     LIST_INSERT_TAIL(queue, pcb_node);
-    do_scheduler();
+    switch_to(p->ctx, &sched_ctx);
 }
 
 void do_unblock(list_node_t *pcb_node)
 {
-    // TODO: [p2-task2] unblock the `pcb` from the block queue
     pcb_t* p = list_pcb(pcb_node);
     p->status = TASK_READY;
-    printl("process %d (%s) is unblocked\n", p->pid, p->name);
+    log_line(PROC, "process %d (%s) is unblocked", p->pid, p->name);
     LIST_REMOVE(pcb_node);
+    // a special case
+    // if the current_running is at the tail of the queue
+    // then the next_running should be the head of the queue
+    // in this case we update the next_running as the new unblocked process
+    // so that in the new unblocked process will be runned immediately
+    // otherwise, the process will still wait for a round of scheduling
+    if (current_running->list.next == &ready_queue)
+        next_running = list_pcb(pcb_node);
     LIST_INSERT_TAIL(&ready_queue, pcb_node);
 }

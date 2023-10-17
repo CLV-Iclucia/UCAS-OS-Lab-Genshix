@@ -1,14 +1,18 @@
+#include <sys/syscall.h>
 #include <screen.h>
 #include <printk.h>
 #include <os/string.h>
 #include <os/sched.h>
 #include <os/irq.h>
 #include <os/kernel.h>
+#include <debugs.h>
 
 #define SCREEN_WIDTH    80
 #define SCREEN_HEIGHT   50
 #define SCREEN_LOC(x, y) ((y) * SCREEN_WIDTH + (x))
 
+extern uint64_t argraw(int n);
+extern int argint(int n, int* ip);
 /* screen buffer */
 char new_screen[SCREEN_HEIGHT * SCREEN_WIDTH] = {0};
 char old_screen[SCREEN_HEIGHT * SCREEN_WIDTH] = {0};
@@ -116,4 +120,20 @@ void screen_reflush(void)
 
     /* recover cursor position */
     vt100_move_cursor(current_running->cursor_x, current_running->cursor_y);
+}
+
+syscall_transfer_v_p(do_write, screen_write);
+// transfer do_reflush to screen_reflush
+syscall_transfer_v_v(do_reflush, screen_reflush)
+
+void do_move_cursor(void)
+{
+    int x, y;
+    if (argint(0, &x) < 0 || argint(1, &y) < 0)
+    {
+        myproc()->trapframe->a0() = -1;
+        return;
+    }
+    screen_move_cursor(x, y);
+    myproc()->trapframe->a0() = 0;
 }

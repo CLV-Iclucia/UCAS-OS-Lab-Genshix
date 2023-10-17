@@ -1,3 +1,4 @@
+#include <debugs.h>
 #include <asm.h>
 #include <os/kernel.h>
 #include <os/task.h>
@@ -16,12 +17,13 @@
 #include <os/string.h>
 #include <os/mm.h>
 #include <os/time.h>
+#include <os/csr.h>
 #include <sys/syscall.h>
 #include <screen.h>
 #include <printk.h>
 #include <assert.h>
-#include <type.h>
 #include <csr.h>
+#include <screen.h>
 
 #define version_buf 50
 #define META_OFFSET_ADDR 0x502001f4
@@ -31,44 +33,7 @@ char buf[version_buf];
 uint32_t tasknum;
 // task info array
 task_info_t tasks[TASK_MAXNUM];
-char logo[] = 
-
-"                                                                                                                                                     \n\r"
-"                                                                                                                                                     \n\r"
-"                                                                          =^                                                                         \n\r"
-"                                                                          @@                                                                         \n\r"
-"                                                                         ,@@^                                                                        \n\r"
-"                                                                         @@@@                                                                        \n\r"
-"                                                                        @@@@@@`                                                                      \n\r"
-"                                                                    ,/@@@@@@@@@@\\`                                                                   \n\r"
-"                                                                   ,\\@@@@@@@@@@@@/`                                                                  \n\r"
-"                                                           ]/@@\\       \\@@@@@@/       /@@\\]                                                          \n\r"
-"           ,/@@@@@@@\\`                                 ]@@@@@@@@^       ,@@@@`       =@@@@@@@@]                                                      \n\r"
-"         /@@@@@@@@@@@@@\\                            /@@@@@@@@@@@@\\       =@@^       /@@@@@@@@@@@@\\                                              ,]@^ \n\r"
-"       ,@@@@@@@@`    ,@@@@@\\                     ,@@@@@@@@@@@@@@@@@       @@       @@@@@@@@@@@@@@@@@`                                      ]@@@@@@   \n\r"
-"      /@@@@@@@/        ,@@@@                    /@@@@@@@@@@@@@/[[`        =^         [[[@@@@@@@@@@@@@@                                =@@@@@@@@@@    \n\r"
-"     /@@@@@@@/           @@@                   @@@@@@@@[`                                    ,[@@@@@@@@                                 =@@@@@@@     \n\r"
-"    =@@@@@@@/            ,@@                    \\@@@^                  ]@@@@@]]]                 =@@@/                  ,]/@@`         =@@@@@@@      \n\r"
-"   ,@@@@@@@@              \\@                      [@@@`              ,@@@   [@@@\\              ,/@@[                   [@@@@@@\\       =@@@@@@@       \n\r"
-"   =@@@@@@@/              ,@ ,@\\]                                   =@@@      \\@@^                                       \\@@@@@@`    =@@@@@@@        \n\r"
-"   @@@@@@@@^               [   O@@@@@@@@@@@@^ =@@@@\\      \\@@@@@@@`,@@@@       @@@ ,@@@@@@@/   =@@@@@@@^  \\@@@@@@@@@/     ,@@@@@@^  ,@@@@@@@`        \n\r"
-"  =@@@@@@@@                    =@@@@@[[[[\\@@@  ,@@@@\\      =@@@@/  =@@@@\\       \\@^  @@@@@`     ,@@@@@      =@@@@@^         @@@@@@\\ @@@@@@@`         \n\r"
-"  =@@@@@@@@                     @@@@^      \\@   @@@@@\\     *@@@@^  =@@@@@@\\          =@@@@       @@@@O       @@@@@           \\@@@@@@@@@@@@`          \n\r"
-"  =@@@@@@@@                     @@@@^       \\`  @@@@@@\\    *@@@@^  ,@@@@@@@@`        =@@@O       @@@@O       @@@@@            =@@@@@@@@@@`           \n\r"
-"  =@@@@@@@@                     @@@@^           @@@@@@@\\    @@@@^   \\@@@@@@@@@`      =@@@@       @@@@O       @@@@@             ,@@@@@@@@`            \n\r"
-"  =@@@@@@@@     ,\\@@@@@@@@@@@@[ @@@@^ ,]@@@     @@@@O,@@\\   @@@@^    \\@@@@@@@@@@     =@@@@       @@@@O   /@@^@@@@@              /@@@@@@\\             \n\r"
-"   @@@@@@@@         O@@@@@@@^   @@/]@@@@@@@`    @@@@O =@@\\ ,@@@@^     =@@@@@@@@@@`   =@@@@@@@@@@@@@@@O   /@@^@@@@@             /@@@@@@@@@            \n\r"
-"   \\@@@@@@@^         @@@@@@@^   O\\@@@@@@@@@@\\   @@@@O  ,@@^*@@@@^       \\@@@@@@@@@`  =@@@@@@@@@@@@@@@O ,@@@@^@@@@@]`          /@@@@@@@@@@@`          \n\r"
-"   ,@@@@@@@\\         O@@@@@@^  ,@@@@@@@@@/[[[`  @@@@O   =@@\\@@@@^         \\@@@@@@@O  =@@@@@OOOOO@@@@@O [[[[O^@@@@@O@\\        /@@@@@@/@@@@@@^         \n\r"
-"    =@@@@@@@`        O@@@@@@^ ,@@@@@^           @@@@O    =@@@@@@^  ^        \\@@@@@@  =@@@@       O@@@O       @@@@@O@@\\      /@@@@@@/  \\@@@@@\\        \n\r"
-"     \\@@@@@@O        O@@@@@@` @@@@@@^        =  O@@@^     =@@@@@^  @         =@@@@@  =@@@O       O@@@O       @@@@@  \\@\\    =@@@@@@@    =@@@@@@       \n\r"
-"      \\@@@@@@\\       O@@@@@@`O` @@@@^       =@  O@@@^      =@@@@^  @O         =@@@O  =@@@O       O@@@O       @@@@O    \^  =@@@@@@@      ,@@@@@@`     \n\r"
-"       \\@@@@@@O`     O@@@@@/   =@@@@\\      /@O  O@@@\\       =@@@^  OOO`       =@@@^  =@@@O       O@@@\\       O@@@O       /@@@@@@@        /@@@@@@\\    \n\r"
-"         \\@@@@@@O`  ,@@@@/`    O@@@OO@@@@@OOO^ =OOOOO^       =OO^  OOOO\\     ,OOOO   OOOOO^     =OOOOO`    ,O@@O@OO    /O@@@@@@@@O`     O@@@@@@@@O\\  \n\r"
-"           [O@OOOOOO@O/`     ,OO[[[`****       *              =OO  =OOOOOO]]/OOOO   =OOOO[[                           /O@@@@@@@@@@     /@@@@@@@@@@@\\  \n\r"
-"                                                                \\^      [OOOO/[    =O/                                                               \n\r"
-"                                                                                                                                                     \n\r";
-
+char* syscall_name[NUM_SYSCALLS];
 static int bss_check(void)
 {
     for (int i = 0; i < version_buf; ++i)
@@ -90,24 +55,24 @@ static void init_jmptab(void)
 {
     volatile long (*(*jmptab))() = (volatile long (*(*))())KERNEL_JMPTAB_BASE;
 
-    jmptab[CONSOLE_PUTSTR]  = (long (*)())port_write;
-    jmptab[CONSOLE_PUTCHAR] = (long (*)())port_write_ch;
-    jmptab[CONSOLE_GETCHAR] = (long (*)())port_read_ch;
-    jmptab[SD_READ]         = (long (*)())sd_read;
-    jmptab[SD_WRITE]        = (long (*)())sd_write;
-    jmptab[QEMU_LOGGING]    = (long (*)())qemu_logging;
-    jmptab[SET_TIMER]       = (long (*)())set_timer;
-    jmptab[READ_FDT]        = (long (*)())read_fdt;
-    jmptab[MOVE_CURSOR]     = (long (*)())screen_move_cursor;
-    jmptab[PRINT]           = (long (*)())printk;
-    jmptab[YIELD]           = (long (*)())do_scheduler;
-    jmptab[MUTEX_INIT]      = (long (*)())do_mutex_lock_init;
-    jmptab[MUTEX_ACQ]       = (long (*)())do_mutex_lock_acquire;
-    jmptab[MUTEX_RELEASE]   = (long (*)())do_mutex_lock_release;
-    jmptab[REFLUSH]         = (long (*)())screen_reflush;
+    jmptab[CONSOLE_PUTSTR]  = (volatile long (*)())port_write;
+    jmptab[CONSOLE_PUTCHAR] = (volatile long (*)())port_write_ch;
+    jmptab[CONSOLE_GETCHAR] = (volatile long (*)())port_read_ch;
+    jmptab[SD_READ]         = (volatile long (*)())sd_read;
+    jmptab[SD_WRITE]        = (volatile long (*)())sd_write;
+    jmptab[QEMU_LOGGING]    = (volatile long (*)())qemu_logging;
+    jmptab[SET_TIMER]       = (volatile long (*)())set_timer;
+    jmptab[READ_FDT]        = (volatile long (*)())read_fdt;
+    jmptab[MOVE_CURSOR]     = (volatile long (*)())screen_move_cursor;
+    jmptab[PRINT]           = (volatile long (*)())printk;
+    jmptab[YIELD]           = (volatile long (*)())do_scheduler;
+    jmptab[MUTEX_INIT]      = (volatile long (*)())do_mutex_lock_init;
+    jmptab[MUTEX_ACQ]       = (volatile long (*)())do_mutex_lock_acquire;
+    jmptab[MUTEX_RELEASE]   = (volatile long (*)())do_mutex_lock_release;
+    jmptab[REFLUSH]         = (volatile long (*)())screen_reflush;
 }
 __attribute__((noreturn))
-void panic(const char *msg)
+void init_panic(const char *msg)
 {
     bios_putstr("panic: ");
     bios_putstr(msg);
@@ -158,36 +123,6 @@ static inline uint32_t readint_img(uint32_t offset) {
 
 uint32_t meta_offset;
 uint32_t name_region_offset;
-/* 
-recap my format
-
-------------                0
-bootloader                  512b
-------------
-kernel                      unknown
-------------                tasks[0].offset
-app 1
-------------                tasks[1].offset
-app 2
-------------
-...
-------------                meta_offset
-#tasks                      4b
-------------
-tasks[0].offset          4b
-tasks[0].name_offset     4b
-------------
-tasks[1].offset          4b
-tasks[1].name_offset     4b
-------------
-...
-------------                tasks[0].name_offset
-tasks[0].name
-------------                tasks[1].name_offset
-tasks[1].name
-------------
-...
-*/
 static void img_putstr(uint32_t offset) {
     char c = getc_img(offset);
     while(c != '\0') {
@@ -235,12 +170,14 @@ static void init_pcb_stack(
 
 }
 
-static char init_tasks[TASK_MAXNUM][NAME_MAXLEN] = {
+static char* init_tasks[] = {
     "print2",
     "print1",
     "fly",
     "lock1",
     "lock2",
+    "sleep",
+    "",
 };
 
 static void init_pcb(void)
@@ -249,41 +186,54 @@ static void init_pcb(void)
     // add all the init_tasks into the ready_queue
     // this process called "init" is also added to the ready_queue
     // for all the tasks in the init_tasks
-    printl("initing tasks...\n");
     for (int i = 0; i < tasknum; i++) {
         // load the task into the memory
-        if (init_tasks[i][0] == '\0') continue;
+        if (init_tasks[i][0] == '\0') break;
         printl("loading task %s\n", init_tasks[i]);
         uint32_t load_addr = (uint32_t)load_task_by_name(init_tasks[i]);
         pcb_t* p = new_pcb(init_tasks[i]);
-        p->ctx->ra = load_addr;
-        p->user_sp = p->ctx->sp = allocUserPage(1);
-        p->status = TASK_READY;
         if (p == NULL) panic("new_pcb failed!\n\r");
+        p->user_sp =  allocUserPage(1) + PAGE_SIZE;
+        p->status = TASK_READY;
+        p->kernel_sp = allocKernelPage(1) + PAGE_SIZE;
+        p->ctx->ra = (uint64_t)user_trap_ret;
+        p->ctx->sp = p->kernel_sp;
+        p->trapframe = (regs_context_t*)allocKernelPage(1);
+        p->trapframe->sp() = p->user_sp;
+        p->trapframe->sepc = load_addr;
+        p->trapframe->sstatus = SR_SPIE;
+        p->trapframe->kernel_sp = p->kernel_sp;
         insert_pcb(&ready_queue, p);
-        printl("task %s loaded\n", init_tasks[i]);
     }
-    /* TODO: [p2-task1] remember to initialize 'current_running' */
-    insert_pcb(&ready_queue, &pid0_pcb);
-    current_running = &pid0_pcb;
-    if (current_running->list.next == &ready_queue)
-        next_running = list_pcb(ready_queue.next);
-    else
-        next_running = list_pcb(current_running->list.next);
-    dump_all_proc();
-    printl("init tasks finished\n");
+    next_running = list_pcb(ready_queue.next);
+    current_running = &sched_pcb;
+    log_block(PROC, dump_all_proc());
 }
+
+#define register_syscall(id, name)\
+do {\
+syscall[id] = (long (*)())do_##name;\
+syscall_name[id] = #name;\
+} while(0)
 
 static void init_syscall(void)
 {
     // TODO: [p2-task3] initialize system call table.
+    register_syscall(SYSCALL_YIELD, yield);
+    register_syscall(SYSCALL_SLEEP, sleep);
+    // syscall about screen
+    register_syscall(SYSCALL_WRITE, write);
+    register_syscall(SYSCALL_CURSOR, move_cursor);
+    register_syscall(SYSCALL_REFLUSH, reflush);
+    // syscall about lock
+    register_syscall(SYSCALL_LOCK_INIT, mutex_init);
+    register_syscall(SYSCALL_LOCK_ACQ, mutex_acquire);
+    register_syscall(SYSCALL_LOCK_RELEASE, mutex_release);
+    // syscall about time
+    register_syscall(SYSCALL_GET_TIMEBASE, get_timebase);
+    register_syscall(SYSCALL_GET_TICK, get_tick);
+    register_syscall(SYSCALL_STRACE, strace);
 }
-/************************************************************/
-static inline char dtoc(int i) {
-    return i + '0';
-}
-
-typedef void (*EntryPoint)();
 
 /************************************************************/
 /* do not touch this comment. reserved for future projects. */
@@ -296,8 +246,8 @@ static void init_task_info(void)
     uint32_t ptr = meta_offset;
     tasknum = readint_img(ptr);
     ptr += 4;
-    if (tasknum < 0) panic("#tasks is negative!\n\r");
-    if (tasknum > TASK_MAXNUM) panic("too many tasks!\n\r");
+    if (tasknum < 0) init_panic("#tasks is negative!\n\r");
+    if (tasknum > TASK_MAXNUM) init_panic("too many tasks!\n\r");
     if (tasknum == 0) {
         bios_putstr("warning: no available tasks!\n\r");
         return ;
@@ -307,14 +257,14 @@ static void init_task_info(void)
         tasks[i].name_offset = readint_img(ptr + 4);
     }
     name_region_offset = tasks[0].name_offset;
-    if (ptr != name_region_offset) panic("user image corrupted!\n\r");
+    if (ptr != name_region_offset) init_panic("user image corrupted!\n\r");
 }
 
 int main(void)
 {
     int check = bss_check();
     if (!check)
-      panic("bss check failed!\n\r");
+      init_panic("bss check failed!\n\r");
     // Init jump table provided by kernel and bios(ΦωΦ)
     init_jmptab();
     // Init task information (〃'▽'〃)

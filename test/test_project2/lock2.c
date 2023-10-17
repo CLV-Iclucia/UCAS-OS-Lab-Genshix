@@ -16,7 +16,9 @@ static char blank[] = {"                                             "};
 int main(void)
 {
     int print_location = 3;
+//    sys_strace(~0ull);
     int mutex_id = sys_mutex_init(LOCK2_KEY);
+//    printf("you have passed two syscalls! Congratulations!\n");
     assert(mutex_id >= 0);
 
     while (1)

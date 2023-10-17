@@ -6,14 +6,36 @@
 #include <printk.h>
 #include <assert.h>
 #include <screen.h>
-
+#include <stdbool.h>
+#include <debugs.h>
 handler_t irq_table[IRQC_COUNT];
 handler_t exc_table[EXCC_COUNT];
+
+static inline bool is_interrupt(uint64_t scause)
+{
+    return (scause >> 63) != 0; 
+}
+
+static inline uint64_t exception_code(uint64_t scause)
+{
+    return scause & 0xfff;
+}
+
 
 void interrupt_helper(regs_context_t *regs, uint64_t stval, uint64_t scause)
 {
     // TODO: [p2-task3] & [p2-task4] interrupt handler.
     // call corresponding handler by the value of `scause`
+    log(INTR, "Interrupt: scause: %lx, stval: %lx\n", scause, stval);
+    if (is_interrupt(scause)) {
+        irq_table[exception_code(scause)](regs, stval, scause);
+    } else {
+        exc_table[exception_code(scause)](regs, stval, scause);
+    }
+}
+
+void user_trap_ret() {
+    ret_from_exception(current_running->trapframe);
 }
 
 void handle_irq_timer(regs_context_t *regs, uint64_t stval, uint64_t scause)
@@ -26,11 +48,14 @@ void init_exception()
 {
     /* TODO: [p2-task3] initialize exc_table */
     /* NOTE: handle_syscall, handle_other, etc.*/
-
+    setup_exception();
+    irq_table[IRQC_S_TIMER] = handle_irq_timer;
+    exc_table[EXCC_SYSCALL] = handle_syscall;
     /* TODO: [p2-task4] initialize irq_table */
     /* NOTE: handle_int, handle_other, etc.*/
 
     /* TODO: [p2-task3] set up the entrypoint of exceptions */
+
 }
 
 void handle_other(regs_context_t *regs, uint64_t stval, uint64_t scause)

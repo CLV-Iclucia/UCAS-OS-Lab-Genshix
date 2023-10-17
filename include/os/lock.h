@@ -69,7 +69,9 @@ void spin_lock_release(spin_lock_t *lock);
 int do_mutex_lock_init(int key);
 void do_mutex_lock_acquire(int mlock_idx);
 void do_mutex_lock_release(int mlock_idx);
-
+void do_mutex_init(void);
+void do_mutex_acquire(void);
+void do_mutex_release(void);
 void dump_lock(int lock_idx);
 /************************************************************/
 /* Do not touch this comment. Reserved for future projects. */

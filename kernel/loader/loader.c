@@ -1,3 +1,4 @@
+#include "os/mm.h"
 #include <os/task.h>
 #include <os/string.h>
 #include <os/kernel.h>
@@ -6,15 +7,17 @@
 extern uint32_t tasknum;
 extern uint32_t name_region_offset;
 extern char getc_img(uint32_t offset);
-extern void panic(const char *);
+extern void init_panic(const char *);
 uint64_t load_task_img(int taskid)
 {
     if (taskid < 1 || taskid > tasknum) {
-        panic("taskid out of range!\n\r");
+        init_panic("taskid out of range!\n\r");
     }
-    uint32_t entry_point = 0x52000000 + (taskid - 1) * 0x10000;
     uint32_t task_start = tasks[taskid - 1].offset;
     uint32_t task_end = taskid == tasknum ? name_region_offset : tasks[taskid].offset;
+    uint32_t size = task_end - task_start;
+    uint32_t page_num = size / PAGE_SIZE + 1;
+    uint32_t entry_point = allocUserPage(page_num);
     uint32_t pa = entry_point, p = task_start;
     for (; p < task_end; p++, pa++)
         *(char*)pa = getc_img(p);

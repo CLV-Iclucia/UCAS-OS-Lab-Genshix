@@ -5,7 +5,38 @@
 .macro SAVE_CONTEXT
   /* TODO: [p2-task3] save all general purpose registers here! */
   /* HINT: Pay attention to the function of tp and sp, and save them carefully! */
-
+  // make sure that sscratch points to the pcb of current_running
+  csrrw a0, sscratch, a0
+  sd ra, OFFSET_REG_RA(a0)
+  sd sp, OFFSET_REG_SP(a0)
+  sd gp, OFFSET_REG_GP(a0)
+  sd tp, OFFSET_REG_TP(a0)
+  sd s0, OFFSET_REG_S0(a0)
+  sd s1, OFFSET_REG_S1(a0)
+  sd s2, OFFSET_REG_S2(a0)
+  sd s3, OFFSET_REG_S3(a0)
+  sd s4, OFFSET_REG_S4(a0)
+  sd s5, OFFSET_REG_S5(a0)
+  sd s6, OFFSET_REG_S6(a0)
+  sd s7, OFFSET_REG_S7(a0)
+  sd s8, OFFSET_REG_S8(a0)
+  sd s9, OFFSET_REG_S9(a0)
+  sd s10, OFFSET_REG_S10(a0)
+  sd s11, OFFSET_REG_S11(a0)
+  sd a1, OFFSET_REG_A1(a0)
+  sd a2, OFFSET_REG_A2(a0)
+  sd a3, OFFSET_REG_A3(a0)
+  sd a4, OFFSET_REG_A4(a0)
+  sd a5, OFFSET_REG_A5(a0)
+  sd a6, OFFSET_REG_A6(a0)
+  sd a7, OFFSET_REG_A7(a0)
+  sd t0, OFFSET_REG_T0(a0)
+  sd t1, OFFSET_REG_T1(a0)
+  sd t2, OFFSET_REG_T2(a0)
+  sd t3, OFFSET_REG_T3(a0)
+  sd t4, OFFSET_REG_T4(a0)
+  sd t5, OFFSET_REG_T5(a0)
+  sd t6, OFFSET_REG_T6(a0)
   /*
    * Disable user-mode memory access as it should only be set in the
    * actual user copy routines.
@@ -16,12 +47,57 @@
   li t0, SR_SUM | SR_FS
 
   /* TODO: [p2-task3] save sstatus, sepc, stval and scause on kernel stack */
-
+  csrr t0, sstatus
+  sd t0, OFFSET_REG_SSTATUS(a0)
+  csrr t0, sepc
+  sd t0, OFFSET_REG_SEPC(a0)
+  csrr t0, stval
+  sd t0, OFFSET_REG_SBADADDR(a0)
+  csrr t0, scause
+  sd t0, OFFSET_REG_SCAUSE(a0)
+  csrr t0, sscratch
+  sd t0, OFFSET_REG_A0(a0)
 .endm
 
 .macro RESTORE_CONTEXT
   /* TODO: Restore all general purpose registers and sepc, sstatus */
-  /* HINT: Pay attention to sp again! */
+  ld ra, OFFSET_REG_RA(a0)
+  ld sp, OFFSET_REG_SP(a0)
+  ld gp, OFFSET_REG_GP(a0)
+  ld tp, OFFSET_REG_TP(a0)
+  ld s0, OFFSET_REG_S0(a0)
+  ld s1, OFFSET_REG_S1(a0)
+  ld s2, OFFSET_REG_S2(a0)
+  ld s3, OFFSET_REG_S3(a0)
+  ld s4, OFFSET_REG_S4(a0)
+  ld s5, OFFSET_REG_S5(a0)
+  ld s6, OFFSET_REG_S6(a0)
+  ld s7, OFFSET_REG_S7(a0)
+  ld s8, OFFSET_REG_S8(a0)
+  ld s9, OFFSET_REG_S9(a0)
+  ld s10, OFFSET_REG_S10(a0)
+  ld s11, OFFSET_REG_S11(a0)
+  ld a1, OFFSET_REG_A1(a0)
+  ld a2, OFFSET_REG_A2(a0)
+  ld a3, OFFSET_REG_A3(a0)
+  ld a4, OFFSET_REG_A4(a0)
+  ld a5, OFFSET_REG_A5(a0)
+  ld a6, OFFSET_REG_A6(a0)
+  ld a7, OFFSET_REG_A7(a0)
+  ld t1, OFFSET_REG_T1(a0)
+  ld t2, OFFSET_REG_T2(a0)
+  ld t3, OFFSET_REG_T3(a0)
+  ld t4, OFFSET_REG_T4(a0)
+  ld t5, OFFSET_REG_T5(a0)
+  ld t6, OFFSET_REG_T6(a0)
+  ld t0, OFFSET_REG_SSTATUS(a0)
+  csrw sstatus, t0
+  ld t0, OFFSET_REG_SEPC(a0)
+  csrw sepc, t0
+  ld t0, OFFSET_REG_A0(a0)
+  csrw sscratch, t0
+  ld t0, OFFSET_REG_T0(a0)
+  csrrw a0, sscratch, a0
 .endm
 
 ENTRY(enable_preempt)
@@ -99,21 +175,21 @@ ENDPROC(switch_to)
 ENTRY(ret_from_exception)
   /* TODO: [p2-task3] restore context via provided macro and return to sepc */
   /* HINT: remember to check your sp, does it point to the right address? */
+  RESTORE_CONTEXT
+  sret
 ENDPROC(ret_from_exception)
 
 ENTRY(exception_handler_entry)
-
   /* TODO: [p2-task3] save context via the provided macro */
-
-
-  /* TODO: [p2-task3] load ret_from_exception into $ra so that we can return to
-   * ret_from_exception when interrupt_help complete.
-   */
-
-
+  SAVE_CONTEXT
+  la ra, user_trap_ret
   /* TODO: [p2-task3] call interrupt_helper
    * NOTE: don't forget to pass parameters for it.
    */
-
-
+  csrr a1, stval
+  csrr a2, scause
+  // set sp to kernel stack: PCB_KERNEL_SP(a0)
+  addi t0, a0, OFFSET_SIZE
+  ld sp, PCB_KERNEL_SP(t0)
+  j interrupt_helper
 ENDPROC(exception_handler_entry)

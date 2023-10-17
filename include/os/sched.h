@@ -47,7 +47,43 @@ typedef struct regs_context
     reg_t sepc;
     reg_t sbadaddr;
     reg_t scause;
+    /* I thought about "how to get kernel sp elegantly" for ages*/
+    /* And later I found that even xv6 did this in a very ugly way( */
+    uint64_t kernel_sp;
 } regs_context_t;
+
+#define zero() regs[0]
+#define ra() regs[1]
+#define sp() regs[2]
+#define gp() regs[3]
+#define tp() regs[4]
+#define t0() regs[5]
+#define t1() regs[6]
+#define t2() regs[7]
+#define s0() regs[8]
+#define s1() regs[9]
+#define a0() regs[10]
+#define a1() regs[11]
+#define a2() regs[12]
+#define a3() regs[13]
+#define a4() regs[14]
+#define a5() regs[15]
+#define a6() regs[16]
+#define a7() regs[17]
+#define s2() regs[18]
+#define s3() regs[19]
+#define s4() regs[20]
+#define s5() regs[21]
+#define s6() regs[22]
+#define s7() regs[23]
+#define s8() regs[24]
+#define s9() regs[25]
+#define s10() regs[26]
+#define s11() regs[27]
+#define t3() regs[28]
+#define t4() regs[29]
+#define t5() regs[30]
+#define t6() regs[31]    
 
 /* used to save register infomation in switch_to */
 typedef struct switchto_context
@@ -88,11 +124,12 @@ static inline const char* task_status_str(task_status_t status) {
 /* Process Control Block */
 typedef struct pcb
 {
+
+    regs_context_t* trapframe;
     /* register context */
     // NOTE: this order must be preserved, which is defined in regs.h!!
     reg_t kernel_sp;
     reg_t user_sp;
-
     /* previous, next pointer */
     list_node_t list;
 
@@ -109,8 +146,10 @@ typedef struct pcb
     /* time(seconds) to wake up sleeping PCB */
     uint64_t wakeup_time;
     switchto_context_t* ctx;
-    char name[NAME_MAXLEN];
-    int lock_bitmask;   // locks held by this process
+
+    char name[NAME_MAXLEN];   
+    uint64_t strace_bitmask;  // what syscalls to trace?
+    uint64_t lock_bitmask;   // locks held by this process
 } pcb_t;
 
 #define offsetof(type, member) ((size_t)(&((type*)0)->member))
@@ -132,18 +171,19 @@ extern pcb_t * volatile next_running;
 extern pid_t process_id;
 
 extern pcb_t pcb[NUM_MAX_TASK];
-extern pcb_t pid0_pcb;
-extern const ptr_t pid0_stack;
+extern pcb_t sched_pcb;
+extern const ptr_t sched_stack;
 
 extern void switch_to(switchto_context_t *prev, switchto_context_t *next);
 // a inline func myproc to get the current_running
-static inline pcb_t* volatile myproc() {
+static inline pcb_t* volatile myproc() 
+{
     return current_running;
 }
 void init_pcb_pool();
 void do_scheduler(void);
-void do_sleep(uint32_t);
-
+void do_sleep(void);
+void do_yield(void);
 void do_block(list_node_t *, list_head *queue);
 void do_unblock(list_node_t *);
 pcb_t* alloc_pcb();

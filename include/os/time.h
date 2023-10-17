@@ -38,6 +38,8 @@ extern uint64_t time_elapsed;
 extern uint64_t get_timer(void);
 extern uint64_t get_ticks(void);
 extern uint64_t get_time_base(void);
+extern void do_get_timebase(void);
+extern void do_get_tick(void);
 extern void latency(uint64_t time);
 
 extern void check_sleeping(void);

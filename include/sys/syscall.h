@@ -30,11 +30,65 @@
 
 #include <os/sched.h>
 #include <type.h>
+#include <asm/unistd.h>
+#define syscall_transfer_i_v(do_fn, fn)\
+void do_fn(void)\
+{\
+    pcb_t* p = myproc();\
+    p->trapframe->a0() = fn();\
+}
+
+#define syscall_transfer_v_v(do_fn, fn)\
+void do_fn(void)\
+{\
+    pcb_t* p = myproc();\
+    fn();\
+    p->trapframe->a0() = 0;\
+}
+
+#define syscall_transfer_i_i(do_fn, fn)\
+void do_fn(void)\
+{\
+    pcb_t* p = myproc();\
+    int arg0;\
+    if (argint(0, &arg0) < 0) {\
+        p->trapframe->a0() = -1;\
+        return;\
+    }\
+    p->trapframe->a0() = fn(arg0);\
+}
+
+#define syscall_transfer_v_i(do_fn, fn)\
+void do_fn(void)\
+{\
+    pcb_t* p = myproc();\
+    int arg0;\
+    if (argint(0, &arg0) < 0) {\
+        p->trapframe->a0() = -1;\
+        return;\
+    }\
+    fn(arg0);\
+    p->trapframe->a0() = 0;\
+}
+
+#define syscall_transfer_v_p(do_fn, fn)\
+void do_fn(void)\
+{\
+    pcb_t* p = myproc();\
+    uint64_t arg0 = argraw(0);\
+    fn((void*)arg0);\
+    p->trapframe->a0() = 0;\
+}
 
 #define NUM_SYSCALLS 96
 
+extern uint64_t argraw(int n);
+extern int argint(int n, int* ip);
 /* syscall function pointer */
 extern long (*syscall[NUM_SYSCALLS])();
+extern char* syscall_name[NUM_SYSCALLS];
+extern void do_strace(void);
 extern void handle_syscall(regs_context_t *regs, uint64_t stval, uint64_t scause);
+extern void dump_trapframe(regs_context_t *regs);
 
 #endif
