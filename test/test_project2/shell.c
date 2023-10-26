@@ -4,6 +4,6 @@
 int main(void)
 {
    while(1) {
-    sys_yield();
+  //  sys_yield();
    } 
 }

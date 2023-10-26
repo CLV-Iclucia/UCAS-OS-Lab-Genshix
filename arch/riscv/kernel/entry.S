@@ -193,3 +193,49 @@ ENTRY(exception_handler_entry)
   ld sp, PCB_KERNEL_SP(t0)
   j interrupt_helper
 ENDPROC(exception_handler_entry)
+
+ENTRY(kernel_exception_handler)
+  // save the context of kernel on current kernel stack
+  addi sp, sp, -(OFFSET_SIZE)
+  sd ra, OFFSET_REG_RA(sp)
+  sd sp, OFFSET_REG_SP(sp)
+  sd gp, OFFSET_REG_GP(sp)
+  sd tp, OFFSET_REG_TP(sp)
+  sd s0, OFFSET_REG_S0(sp)
+  sd s1, OFFSET_REG_S1(sp)
+  sd s2, OFFSET_REG_S2(sp)
+  sd s3, OFFSET_REG_S3(sp)
+  sd s4, OFFSET_REG_S4(sp)
+  sd s5, OFFSET_REG_S5(sp)
+  sd s6, OFFSET_REG_S6(sp)
+  sd s7, OFFSET_REG_S7(sp)
+  sd s8, OFFSET_REG_S8(sp)  
+  sd s9, OFFSET_REG_S9(sp)
+  sd s10, OFFSET_REG_S10(sp)
+  sd s11, OFFSET_REG_S11(sp)
+  sd a1, OFFSET_REG_A1(sp)
+  sd a2, OFFSET_REG_A2(sp)
+  sd a3, OFFSET_REG_A3(sp)
+  sd a4, OFFSET_REG_A4(sp)
+  sd a5, OFFSET_REG_A5(sp)
+  sd a6, OFFSET_REG_A6(sp)
+  sd a7, OFFSET_REG_A7(sp)
+  sd t0, OFFSET_REG_T0(sp)
+  sd t1, OFFSET_REG_T1(sp)
+  sd t2, OFFSET_REG_T2(sp)
+  sd t3, OFFSET_REG_T3(sp)
+  sd t4, OFFSET_REG_T4(sp)
+  sd t5, OFFSET_REG_T5(sp)
+  sd t6, OFFSET_REG_T6(sp)
+  
+  la ra, kernel_trap_ret
+  csrr a1, stval
+  csrr a2, scause
+  addi t0, a0, OFFSET_SIZE
+  ld sp, PCB_KERNEL_SP(t0)
+  j interrupt_helper
+ENDPROC(kernel_exception_handler)
+
+ENTRY(kernel_trap_ret)
+  
+ENDPROC(kernel_trap_ret)

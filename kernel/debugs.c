@@ -13,3 +13,8 @@ void kernel_self_check()
     // first turn off all the interrupt
     assert(read_reg(sp) < FREEMEM_USER); // sp should be in kernel space
 }
+
+void dump_kernel()
+{
+
+}

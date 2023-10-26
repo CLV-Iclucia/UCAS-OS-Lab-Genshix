@@ -188,10 +188,10 @@ static char* init_tasks[] =
 
 static void init_pcb(void)
 {
-    /* TODO: [p2-task1] load needed tasks and init their corresponding PCB */
-    // add all the init_tasks into the ready_queue
-    // this process called "init" is also added to the ready_queue
-    // for all the tasks in the init_tasks
+    current_running = &sched_pcb;
+    current_running->trapframe = (regs_context_t*)allocKernelPage(1);
+    current_running->trapframe->kernel_sp = current_running->kernel_sp;
+    current_running->trapframe->sp() = current_running->kernel_sp;
     for (int i = 0; i < tasknum; i++) {
         // load the task into the memory
         if (init_tasks[i][0] == '\0') break;
@@ -212,7 +212,7 @@ static void init_pcb(void)
         insert_pcb(&ready_queue, p);
     }
     next_running = list_pcb(ready_queue.next);
-    current_running = &sched_pcb;
+    log_block(PROC, dump_pcb(current_running));
     log_block(PROC, dump_all_proc());
 }
 
@@ -307,14 +307,17 @@ int main(void)
     printk("Are you ready for all the weird bugs ahead?\nPress any key to continue...\n");
     getchar();
     printk("Good luck, then.\n");
+    printk("time base: %lx\n", time_base);
     latency(2);
     screen_clear();
+    w_sscratch((uint64_t)(sched_pcb.trapframe));
     while (1)
     {
         // If you do non-preemptive scheduling, it's used to surrender control
     //    do_scheduler();
 
         // If you do preemptive scheduling, they're used to enable CSR_SIE and wfi
+        // Read CPU frequency (｡•ᴗ-)_
         enable_preempt();
         asm volatile("wfi"); 
     }

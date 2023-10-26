@@ -56,6 +56,7 @@ enum ExcCode
     EXCC_INST_PAGE_FAULT  = 12,
     EXCC_LOAD_PAGE_FAULT  = 13,
     EXCC_STORE_PAGE_FAULT = 15,
+    EXCC_UNKNOWN_EXCEPTION= 0x18,
     EXCC_COUNT
 };
 
@@ -70,6 +71,7 @@ extern void interrupt_helper(regs_context_t *regs, uint64_t stval, uint64_t scau
 extern void exception_handler_entry(void);
 extern void init_exception();
 extern void setup_exception();
+extern void kernel_exception_handler();
 extern void ret_from_exception(regs_context_t* trapframe);
 extern void user_trap_ret();
 extern void handle_irq_timer(regs_context_t *regs, uint64_t stval, uint64_t scause);
@@ -80,10 +82,5 @@ extern void enable_interrupt(void);
 extern void disable_interrupt(void);
 extern void enable_preempt(void);
 extern void disable_preempt(void);
-
-static inline bool is_supervisor() 
-{
-    return true;
-}
-
+extern void dump_kernel(void);
 #endif
