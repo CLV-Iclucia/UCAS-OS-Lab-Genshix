@@ -34,50 +34,50 @@
 #define syscall_transfer_i_v(do_fn, fn)\
 void do_fn(void)\
 {\
-    pcb_t* p = myproc();\
-    p->trapframe->a0() = fn();\
+    tcb_t* t = mythread();\
+    t->trapframe->a0() = fn();\
 }
 
 #define syscall_transfer_v_v(do_fn, fn)\
 void do_fn(void)\
 {\
-    pcb_t* p = myproc();\
+    tcb_t* t = mythread();\
     fn();\
-    p->trapframe->a0() = 0;\
+    t->trapframe->a0() = 0;\
 }
 
 #define syscall_transfer_i_i(do_fn, fn)\
 void do_fn(void)\
 {\
-    pcb_t* p = myproc();\
+    tcb_t* t = mythread();\
     int arg0;\
     if (argint(0, &arg0) < 0) {\
-        p->trapframe->a0() = -1;\
+        t->trapframe->a0() = -1;\
         return;\
     }\
-    p->trapframe->a0() = fn(arg0);\
+    t->trapframe->a0() = fn(arg0);\
 }
 
 #define syscall_transfer_v_i(do_fn, fn)\
 void do_fn(void)\
 {\
-    pcb_t* p = myproc();\
+    tcb_t* t = mythread();\
     int arg0;\
     if (argint(0, &arg0) < 0) {\
-        p->trapframe->a0() = -1;\
+        t->trapframe->a0() = -1;\
         return;\
     }\
     fn(arg0);\
-    p->trapframe->a0() = 0;\
+    t->trapframe->a0() = 0;\
 }
 
 #define syscall_transfer_v_p(do_fn, fn)\
 void do_fn(void)\
 {\
-    pcb_t* p = myproc();\
+    tcb_t* t = mythread();\
     uint64_t arg0 = argraw(0);\
     fn((void*)arg0);\
-    p->trapframe->a0() = 0;\
+    t->trapframe->a0() = 0;\
 }
 
 #define NUM_SYSCALLS 96

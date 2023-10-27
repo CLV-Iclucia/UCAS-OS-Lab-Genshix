@@ -56,41 +56,40 @@ void do_mutex_lock_acquire(int mlock_idx)
 {
     /* TODO: [p2-task2] acquire mutex lock */
     assert(mlock_idx >= 0 && mlock_idx < LOCK_NUM);
-    pcb_t* p = myproc();
-    log_line(LOCK, "process %d (%s) tries to acquire lock %d\n", p->pid, p->name, mlock_idx);
-    assert_msg(!HOLD_LOCK(p, mlock_idx), 
+    tcb_t* t = mythread();
+    log_line(LOCK, "process %d (%s), thread %d tries to acquire lock %d\n", t->pcb->pid, t->pcb->name, t->tid, mlock_idx);
+    assert_msg(!HOLD_LOCK(t, mlock_idx), 
         "lock is already held by the current process!");
     // print a log
     if (mlocks[mlock_idx].lock.status == UNLOCKED) {
         mlocks[mlock_idx].lock.status = LOCKED;
-        p->lock_bitmask |= LOCK_MASK(mlock_idx);
-        log_line(LOCK, "lock %d held by %s", mlock_idx, p->name);
+        t->lock_bitmask |= LOCK_MASK(mlock_idx);
+        log_line(LOCK, "lock %d held by %s, thread %d", mlock_idx, t->pcb->name, t->tid);
     }
-    else do_block(&(p->list), &mlocks[mlock_idx].block_queue);
+    else do_block(&(t->list), &mlocks[mlock_idx].block_queue);
 }
-
 
 void do_mutex_lock_release(int mlock_idx)
 {
     /* TODO: [p2-task2] release mutex lock */
     assert(mlock_idx >= 0 && mlock_idx < LOCK_NUM);
     assert_msg(mlocks[mlock_idx].lock.status == LOCKED, "releasing an unlocked lock!");
-    pcb_t* p = myproc();
-    log_line(LOCK, "process %d (%s) is releasing lock %d\n", p->pid, p->name, mlock_idx);
-    assert_msg(HOLD_LOCK(p, mlock_idx), "lock is not held by the current process!");
+    tcb_t* t = mythread();
+    log_line(LOCK, "process %d (%s), thread %d is releasing lock %d\n", t->pcb->pid, t->pcb->name, t->tid, mlock_idx);
+    assert_msg(HOLD_LOCK(t, mlock_idx), "lock is not held by the current process!");
     mlocks[mlock_idx].lock.status = UNLOCKED;
-    p->lock_bitmask ^= LOCK_MASK(mlock_idx);
+    t->lock_bitmask ^= LOCK_MASK(mlock_idx);
     // if no proc is blocking on the lock, push the lock index to the queue and return
-    log_line(LOCK, "process %d (%s) released lock %d\n", p->pid, p->name, mlock_idx);
+    log_line(LOCK, "process %d (%s), thread %d released lock %d\n", t->pcb->pid, t->pcb->name, t->tid, mlock_idx);
     if (LIST_EMPTY(mlocks[mlock_idx].block_queue))
         return;
-    pcb_t* np = list_pcb(LIST_FIRST(mlocks[mlock_idx].block_queue));
+    tcb_t* nt = list_tcb(LIST_FIRST(mlocks[mlock_idx].block_queue));
     do_unblock(LIST_FIRST(mlocks[mlock_idx].block_queue));
     assert(mlocks[mlock_idx].lock.status == UNLOCKED);
-    assert_msg(!HOLD_LOCK(np, mlock_idx), "the awoken process holds the lock");
+    assert_msg(!HOLD_LOCK(nt, mlock_idx), "the awoken process holds the lock");
     mlocks[mlock_idx].lock.status = LOCKED;
-    np->lock_bitmask |= LOCK_MASK(mlock_idx);
-    log_line(LOCK, "lock %d held by %s\n", mlock_idx, np->name);
+    nt->lock_bitmask |= LOCK_MASK(mlock_idx);
+    log_line(LOCK, "lock %d held by %s\n", mlock_idx, nt->pcb->name);
 }
 
 syscall_transfer_i_i(do_mutex_init, do_mutex_lock_init)
@@ -104,8 +103,8 @@ void dump_lock(int mlock_idx)
             mlock_idx, lock_status_str(mlocks[mlock_idx].lock.status));
     list_node_t* node = LIST_FIRST(mlocks[mlock_idx].block_queue);
     while(node != &mlocks[mlock_idx].block_queue) {
-        pcb_t* p = list_pcb(node);
-        printl("pid: %d, name: %s\n", p->pid, p->name);
+        tcb_t* t = list_tcb(node);
+        printl("pid: %d, name: %s, tid: %d\n", t->pcb->pid, t->pcb->name, t->tid);
         node = node->next;
     }
     printl("****************************\n");

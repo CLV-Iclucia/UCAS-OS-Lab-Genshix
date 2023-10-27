@@ -27,7 +27,7 @@ void dump_trapframe(regs_context_t *regs) {
 }
 
 uint64_t argraw(int n) {
-  regs_context_t *r = myproc()->trapframe;
+  regs_context_t *r = mythread()->trapframe;
   assert(n >= 0 && n < 6);
   switch(n) {
     case 0: return r->a0();
@@ -46,10 +46,10 @@ int argint(int n, int *ip) {
 }
 
 void do_strace(void) {
-  struct pcb *p = myproc();
+  tcb_t *t = mythread();
   uint64_t strace_bitmask = argraw(0);
-  p->strace_bitmask = strace_bitmask;
-  p->trapframe->a0() = 0;
+  t->strace_bitmask = strace_bitmask;
+  t->trapframe->a0() = 0;
 }
 
 void handle_syscall(regs_context_t *regs, uint64_t interrupt, uint64_t cause) 
@@ -57,15 +57,15 @@ void handle_syscall(regs_context_t *regs, uint64_t interrupt, uint64_t cause)
   int sysno = regs->a7();
   log_line(SYSCALL, "handling syscall: %d\n", sysno);
   log_block(INTR, dump_trapframe(regs));
-  pcb_t *p = myproc();
-  p->trapframe->sepc += 4;
+  tcb_t *t = mythread();
+  t->trapframe->sepc += 4;
   syscall[sysno]();
   int ret = regs->a0();
-  if (p->strace_bitmask & SYSCALL_BITMASK(sysno)) {
+  if (t->strace_bitmask & SYSCALL_BITMASK(sysno)) {
     if (syscall_name[sysno])
-      printk("%s(pid: %d): syscall %s -> %d\n", p->name, p->pid,
+      printk("%s(pid: %d), thread %d: syscall %s -> %d\n", t->pcb->name, t->pcb->pid, t->tid,
              syscall_name[sysno], ret);
     else
-      printk("%s(pid: %d): unknown syscall %d\n", p->name, p->pid, sysno);
+      printk("%s(pid: %d), thread %d: unknown syscall %d\n", t->pcb->name, t->pcb->pid, t->tid, sysno);
   }
 }

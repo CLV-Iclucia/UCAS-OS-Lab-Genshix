@@ -188,7 +188,7 @@ static char* init_tasks[] =
 
 static void init_pcb(void)
 {
-    current_running = &sched_pcb;
+    current_running = &sched_tcb;
     current_running->trapframe = (regs_context_t*)allocKernelPage(1);
     current_running->trapframe->kernel_sp = current_running->kernel_sp;
     current_running->trapframe->sp() = current_running->kernel_sp;
@@ -199,20 +199,16 @@ static void init_pcb(void)
         uint32_t load_addr = (uint32_t)load_task_by_name(init_tasks[i]);
         pcb_t* p = new_pcb(init_tasks[i]);
         if (p == NULL) panic("new_pcb failed!\n\r");
-        p->user_sp =  allocUserPage(1) + PAGE_SIZE;
-        p->status = TASK_READY;
-        p->kernel_sp = allocKernelPage(1) + PAGE_SIZE;
-        p->ctx->ra = (uint64_t)user_trap_ret;
-        p->ctx->sp = p->kernel_sp;
-        p->trapframe = (regs_context_t*)allocKernelPage(1);
-        p->trapframe->sp() = p->user_sp;
-        p->trapframe->sepc = load_addr;
-        p->trapframe->sstatus = SR_SPIE;
-        p->trapframe->kernel_sp = p->kernel_sp;
-        insert_pcb(&ready_queue, p);
+        tcb_t* t = main_thread(p);
+        t->ctx->ra = (uint64_t)user_trap_ret;
+        t->ctx->sp = t->kernel_sp;
+        t->trapframe->sp() = t->user_sp;
+        t->trapframe->sepc = load_addr;
+        t->trapframe->sstatus = SR_SPIE;
+        t->trapframe->kernel_sp = t->kernel_sp;
+        insert_tcb(&ready_queue, t);
     }
-    next_running = list_pcb(ready_queue.next);
-    log_block(PROC, dump_pcb(current_running));
+    next_running = list_tcb(ready_queue.next);
     log_block(PROC, dump_all_proc());
 }
 
@@ -239,6 +235,9 @@ static void init_syscall(void)
     register_syscall(SYSCALL_GET_TIMEBASE, get_timebase);
     register_syscall(SYSCALL_GET_TICK, get_tick);
     register_syscall(SYSCALL_STRACE, strace);
+    register_syscall(SYSCALL_THREAD_CREATE, thread_create);
+    register_syscall(SYSCALL_THREAD_EXIT, thread_exit);
+    register_syscall(SYSCALL_THREAD_YIELD, thread_yield);
 }
 
 /************************************************************/
@@ -275,7 +274,7 @@ int main(void)
     init_jmptab();
     // Init task information (〃'▽'〃)
     init_task_info();
-    init_pcb_pool();
+    init_pool();
     // Init Process Control Blocks |•'-'•) ✧
     init_pcb();
     printk("> [INIT] PCB initialization succeeded.\n");
@@ -310,7 +309,7 @@ int main(void)
     printk("time base: %lx\n", time_base);
     latency(2);
     screen_clear();
-    w_sscratch((uint64_t)(sched_pcb.trapframe));
+    w_sscratch((uint64_t)(sched_tcb.trapframe));
     while (1)
     {
         // If you do non-preemptive scheduling, it's used to surrender control

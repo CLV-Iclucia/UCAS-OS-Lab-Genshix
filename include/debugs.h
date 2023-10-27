@@ -2,9 +2,10 @@
 #define DEBUGS_H
 
 #define LOG_PROC_ENABLED false
-#define LOG_LOCK_ENABLED true
+#define LOG_LOCK_ENABLED false
 #define LOG_INTR_ENABLED false
 #define LOG_SYSCALL_ENABLED false
+#define LOG_MEM_ENABLED false
 
 #define log(OPT, fmt, ...) \
 do {\

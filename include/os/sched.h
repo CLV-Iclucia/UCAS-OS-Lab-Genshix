@@ -1,10 +1,11 @@
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  * * * * * * * * * * *
- *            Copyright (C) 2018 Institute of Computing Technology, CAS
- *               Author : Han Shukai (email : hanshukai@ict.ac.cn)
- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  * * * * * * * * * * *
- *        Process scheduling related content, such as: scheduler, process blocking,
- *                 process wakeup, process creation, process kill, etc.
- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  * * * * * * * * * * *
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  * * * * * *
+ * * * * * * Copyright (C) 2018 Institute of Computing Technology, CAS Author :
+ * Han Shukai (email : hanshukai@ict.ac.cn)
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  * * * * * *
+ * * * * * * Process scheduling related content, such as: scheduler, process
+ * blocking, process wakeup, process creation, process kill, etc.
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  * * * * * *
+ * * * * * *
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -24,32 +25,34 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  *
- * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  * * * * * * * * * * */
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  * * * * * *
+ * * * * * */
 
 #ifndef INCLUDE_SCHEDULER_H_
 #define INCLUDE_SCHEDULER_H_
 
-#include <type.h>
 #include <os/list.h>
 #include <os/lock.h>
+#include <os/mm.h>
+#include <type.h>
+#include <assert.h>
 
 #define NUM_MAX_TASK 16
 #define NAME_MAXLEN 16
-
+#define NUM_MAX_THREADS NUM_MAX_TASK * 4
 /* used to save register infomation */
-typedef struct regs_context
-{
-    /* Saved main processor registers.*/
-    reg_t regs[32];
+typedef struct regs_context {
+  /* Saved main processor registers.*/
+  reg_t regs[32];
 
-    /* Saved special registers. */
-    reg_t sstatus;
-    reg_t sepc;
-    reg_t sbadaddr;
-    reg_t scause;
-    /* I thought about "how to get kernel sp elegantly" for ages*/
-    /* And later I found that even xv6 did this in a very ugly way( */
-    uint64_t kernel_sp;
+  /* Saved special registers. */
+  reg_t sstatus;
+  reg_t sepc;
+  reg_t sbadaddr;
+  reg_t scause;
+  /* I thought about "how to get kernel sp elegantly" for ages*/
+  /* And later I found that even xv6 did this in a very ugly way( */
+  uint64_t kernel_sp;
 } regs_context_t;
 
 #define zero() regs[0]
@@ -83,80 +86,90 @@ typedef struct regs_context
 #define t3() regs[28]
 #define t4() regs[29]
 #define t5() regs[30]
-#define t6() regs[31]    
+#define t6() regs[31]
 
 /* used to save register infomation in switch_to */
-typedef struct switchto_context
-{
-    /* Callee saved registers.*/
-    reg_t ra;
-    reg_t sp;
-    reg_t s0;
-    reg_t s1;
-    reg_t s2;
-    reg_t s3;
-    reg_t s4;
-    reg_t s5;
-    reg_t s6;
-    reg_t s7;
-    reg_t s8;
-    reg_t s9;
-    reg_t s10;
-    reg_t s11;
+typedef struct switchto_context {
+  /* Callee saved registers.*/
+  reg_t ra;
+  reg_t sp;
+  reg_t s0;
+  reg_t s1;
+  reg_t s2;
+  reg_t s3;
+  reg_t s4;
+  reg_t s5;
+  reg_t s6;
+  reg_t s7;
+  reg_t s8;
+  reg_t s9;
+  reg_t s10;
+  reg_t s11;
 } switchto_context_t;
 
 typedef enum {
-    TASK_BLOCKED,
-    TASK_RUNNING,
-    TASK_READY,
-    TASK_EXITED,
+  TASK_BLOCKED,
+  TASK_RUNNING,
+  TASK_READY,
+  TASK_EXITED,
 } task_status_t;
 
-static inline const char* task_status_str(task_status_t status) {
-    switch (status) {
-        case TASK_BLOCKED: return "BLOCKED";
-        case TASK_RUNNING: return "RUNNING";
-        case TASK_READY: return "READY";
-        case TASK_EXITED: return "EXITED";
-        default: return "UNKNOWN";
-    }
+static inline const char *task_status_str(task_status_t status) {
+  switch (status) {
+  case TASK_BLOCKED:
+    return "BLOCKED";
+  case TASK_RUNNING:
+    return "RUNNING";
+  case TASK_READY:
+    return "READY";
+  case TASK_EXITED:
+    return "EXITED";
+  default:
+    return "UNKNOWN";
+  }
 }
+
 /* Process Control Block */
-typedef struct pcb
-{
-
-    regs_context_t* trapframe;
-    /* register context */
-    // NOTE: this order must be preserved, which is defined in regs.h!!
-    reg_t kernel_sp;
-    reg_t user_sp;
-    /* previous, next pointer */
-    list_node_t list;
-
-    /* process id */
-    pid_t pid;
-
-    /* BLOCK | READY | RUNNING */
-    task_status_t status;
-
-    /* cursor position */
-    int cursor_x;
-    int cursor_y;
-
-    /* time(seconds) to wake up sleeping PCB */
-    uint64_t wakeup_time;
-    switchto_context_t* ctx;
-
-    char name[NAME_MAXLEN];   
-    uint64_t strace_bitmask;  // what syscalls to trace?
-    uint64_t lock_bitmask;   // locks held by this process
+typedef struct pcb {
+  list_node_t threads;
+  int num_threads;
+  /* process id */
+  pid_t pid;
+  char name[NAME_MAXLEN];
 } pcb_t;
 
-#define offsetof(type, member) ((size_t)(&((type*)0)->member))
-#define HOLD_LOCK(proc, idx) ((proc)->lock_bitmask & LOCK_MASK(idx))
+/* Thread Control Block */
+typedef struct tcb {
+  regs_context_t *trapframe;
+  /* register context */
+  // NOTE: this order must be preserved, which is defined in regs.h!!
+  reg_t kernel_sp;
+  reg_t user_sp;
+  /* previous, next pointer in ready_queue */
+  list_node_t list;
+  list_node_t thread_list;
+  /* BLOCK | READY | RUNNING */
+  task_status_t status;
+  int tid;
+  /* cursor position */
+  int cursor_x;
+  int cursor_y;
+
+  /* time(seconds) to wake up sleeping PCB */
+  uint64_t wakeup_time;
+  switchto_context_t *ctx;
+  uint64_t strace_bitmask; // what syscalls to trace?
+  uint64_t lock_bitmask;   // locks held by this thread
+  pcb_t *pcb;              // the process this thread belongs to
+} tcb_t;
+
+typedef uint64_t thread_t;
+
+#define offsetof(type, member) ((size_t)(&((type *)0)->member))
+#define HOLD_LOCK(thread, idx) ((thread)->lock_bitmask & LOCK_MASK(idx))
 // given a pointer to a list_node_t, get the pcb_t that contains it
-static inline pcb_t* list_pcb(list_node_t* ptr) {
-    return (pcb_t*)((char*)ptr - offsetof(pcb_t, list));
+static inline tcb_t *list_tcb(list_node_t *ptr) {
+  return (tcb_t *)((char *)ptr - offsetof(tcb_t, list));
 }
 
 /* ready queue to run */
@@ -166,32 +179,61 @@ extern list_head ready_queue;
 extern list_head sleep_queue;
 
 /* current running task PCB */
-extern pcb_t * volatile current_running;
-extern pcb_t * volatile next_running;
+extern tcb_t *volatile current_running;
+extern tcb_t *volatile next_running;
 extern pid_t process_id;
 
 extern pcb_t pcb[NUM_MAX_TASK];
+extern tcb_t tcb[NUM_MAX_TASK * 4];
+extern tcb_t sched_tcb;
 extern pcb_t sched_pcb;
 extern const ptr_t sched_stack;
 
 extern void switch_to(switchto_context_t *prev, switchto_context_t *next);
 // a inline func myproc to get the current_running
-static inline pcb_t* volatile myproc() 
-{
-    return current_running;
-}
-void init_pcb_pool();
+static inline tcb_t *volatile mythread() { return current_running; }
+void init_pool();
 void do_scheduler(void);
 void do_sleep(void);
 void do_yield(void);
 void do_block(list_node_t *, list_head *queue);
 void do_unblock(list_node_t *);
-pcb_t* alloc_pcb();
-pcb_t* new_pcb(const char* name);
-void insert_pcb(list_head* queue, pcb_t* pcb);
+tcb_t *alloc_tcb();
+pcb_t *alloc_pcb();
+tcb_t *new_tcb(pcb_t *p);
+pcb_t *new_pcb(const char *name);
+
+static inline void update_next() 
+{
+  if (current_running->list.next == &ready_queue)
+    next_running = list_tcb(ready_queue.next);
+  else
+    next_running = list_tcb(current_running->list.next);
+}
+
+static inline int free_tcb(tcb_t *t) 
+{
+  pcb_t *p = t->pcb;
+  assert_msg(t != &sched_tcb, "freeing the scheduler thread.");
+  assert_msg(p->num_threads > 1, "freeing the last thread of the process.");
+  freeKernelPage((ptr_t)t->trapframe);
+  freeKernelPage((ptr_t)t->kernel_sp);
+  freeUserPage((ptr_t)t->user_sp);
+  LIST_REMOVE(&(t->thread_list));
+  LIST_REMOVE(&(t->list));
+  return 0;
+}
+static inline tcb_t* main_thread(pcb_t *p) 
+{
+  return list_tcb(p->threads.next);
+}
+void insert_tcb(list_head *queue, tcb_t *tcb);
 void dump_all_proc();
-void dump_context(switchto_context_t* ctx);
-void dump_pcb(pcb_t* p);
+void dump_context(switchto_context_t *ctx);
+void dump_pcb(pcb_t *p);
+void do_thread_create(void);
+void do_thread_exit(void);
+void do_thread_yield(void);
 /************************************************************/
 /* Do not touch this comment. Reserved for future projects. */
 /************************************************************/

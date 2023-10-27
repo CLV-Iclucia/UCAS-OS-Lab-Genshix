@@ -38,13 +38,13 @@ syscall_transfer_i_v(do_get_timebase, get_time_base)
 void check_sleeping(void)
 {
     // TODO: run through the list is too slow, manage the sleeping queue with other data structure
-    list_node_t* p = sleep_queue.next;
-    list_node_t* p_next = p->next;
-    while (p != &sleep_queue) {
-        pcb_t* pcb = list_pcb(p);
-        if (pcb->wakeup_time <= get_ticks())
-            do_unblock(p);
-        p = p_next;
-        p_next = p->next;
+    list_node_t* t = sleep_queue.next;
+    list_node_t* t_next = t->next;
+    while (t != &sleep_queue) {
+        tcb_t* tcb = list_tcb(t);
+        if (tcb->wakeup_time <= get_ticks())
+            do_unblock(t);
+        t = t_next;
+        t_next = t->next;
     }
 }

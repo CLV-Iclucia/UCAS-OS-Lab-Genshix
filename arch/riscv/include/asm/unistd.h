@@ -12,5 +12,8 @@
 #define SYSCALL_LOCK_ACQ 41
 #define SYSCALL_LOCK_RELEASE 42
 #define SYSCALL_STRACE 43        // In the future maybe I need to change this
+#define SYSCALL_THREAD_CREATE 44
+#define SYSCALL_THREAD_EXIT 45
+#define SYSCALL_THREAD_YIELD 47
 
 #endif
