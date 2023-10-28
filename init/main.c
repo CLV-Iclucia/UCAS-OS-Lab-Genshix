@@ -153,27 +153,6 @@ static char getchar()
 }
 
 /************************************************************/
-static void init_pcb_stack(
-    ptr_t kernel_stack, ptr_t user_stack, ptr_t entry_point,
-    pcb_t *pcb)
-{
-     /* TODO: [p2-task3] initialization of registers on kernel stack
-      * HINT: sp, ra, sepc, sstatus
-      * NOTE: To run the task in user mode, you should set corresponding bits
-      *     of sstatus(SPP, SPIE, etc.).
-      */
-    regs_context_t *pt_regs =
-        (regs_context_t *)(kernel_stack - sizeof(regs_context_t));
-
-
-    /* TODO: [p2-task1] set sp to simulate just returning from switch_to
-     * NOTE: you should prepare a stack, and push some values to
-     * simulate a callee-saved context.
-     */
-    switchto_context_t *pt_switchto =
-        (switchto_context_t *)((ptr_t)pt_regs - sizeof(switchto_context_t));
-
-}
 
 static char* init_tasks[] = 
 {
@@ -183,6 +162,7 @@ static char* init_tasks[] =
     "lock1",
     "lock2",
     "sleep",
+    "timer",
     "",
 };
 
@@ -190,8 +170,7 @@ static void init_pcb(void)
 {
     current_running = &sched_tcb;
     current_running->trapframe = (regs_context_t*)allocKernelPage(1);
-    current_running->trapframe->kernel_sp = current_running->kernel_sp;
-    current_running->trapframe->sp() = current_running->kernel_sp;
+    current_running->trapframe->kernel_sp = current_running->kernel_sp + PAGE_SIZE;
     for (int i = 0; i < tasknum; i++) {
         // load the task into the memory
         if (init_tasks[i][0] == '\0') break;
@@ -201,15 +180,14 @@ static void init_pcb(void)
         if (p == NULL) panic("new_pcb failed!\n\r");
         tcb_t* t = main_thread(p);
         t->ctx->ra = (uint64_t)user_trap_ret;
-        t->ctx->sp = t->kernel_sp;
+        t->ctx->sp = t->kernel_sp + PAGE_SIZE;
         t->trapframe->sp() = t->user_sp;
         t->trapframe->sepc = load_addr;
         t->trapframe->sstatus = SR_SPIE;
-        t->trapframe->kernel_sp = t->kernel_sp;
-        insert_tcb(&ready_queue, t);
+        t->trapframe->kernel_sp = t->kernel_sp + PAGE_SIZE;
     }
     next_running = list_tcb(ready_queue.next);
-    log_block(PROC, dump_all_proc());
+    log_block(PROC, dump_all_threads());
 }
 
 #define register_syscall(id, name)\
@@ -298,9 +276,6 @@ int main(void)
     init_screen();
     printk("> [INIT] SCREEN initialization succeeded.\n");
 
-    // TODO: [p2-task4] Setup timer interrupt and enable all interrupt globally
-    // NOTE: The function of sstatus.sie is different from sie's
-    // Infinite while loop, where CPU stays in a low-power state (QAQQQQQQQQQQQ)
     printk("Are you ready for timer interrupts?\nPress any key to continue...\n");
     getchar();
     printk("Are you ready for all the weird bugs ahead?\nPress any key to continue...\n");
@@ -312,9 +287,6 @@ int main(void)
     w_sscratch((uint64_t)(sched_tcb.trapframe));
     while (1)
     {
-        // If you do non-preemptive scheduling, it's used to surrender control
-    //    do_scheduler();
-
         // If you do preemptive scheduling, they're used to enable CSR_SIE and wfi
         // Read CPU frequency (｡•ᴗ-)_
         enable_preempt();

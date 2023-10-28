@@ -171,7 +171,9 @@ typedef uint64_t thread_t;
 static inline tcb_t *list_tcb(list_node_t *ptr) {
   return (tcb_t *)((char *)ptr - offsetof(tcb_t, list));
 }
-
+static inline tcb_t *list_thread(list_node_t *ptr) {
+  return (tcb_t *)((char *)ptr - offsetof(tcb_t, thread_list));
+}
 /* ready queue to run */
 extern list_head ready_queue;
 
@@ -211,24 +213,14 @@ static inline void update_next()
     next_running = list_tcb(current_running->list.next);
 }
 
-static inline int free_tcb(tcb_t *t) 
-{
-  pcb_t *p = t->pcb;
-  assert_msg(t != &sched_tcb, "freeing the scheduler thread.");
-  assert_msg(p->num_threads > 1, "freeing the last thread of the process.");
-  freeKernelPage((ptr_t)t->trapframe);
-  freeKernelPage((ptr_t)t->kernel_sp);
-  freeUserPage((ptr_t)t->user_sp);
-  LIST_REMOVE(&(t->thread_list));
-  LIST_REMOVE(&(t->list));
-  return 0;
-}
+extern int free_tcb(tcb_t *t);
+
 static inline tcb_t* main_thread(pcb_t *p) 
 {
-  return list_tcb(p->threads.next);
+  return list_thread(p->threads.next);
 }
 void insert_tcb(list_head *queue, tcb_t *tcb);
-void dump_all_proc();
+void dump_all_threads();
 void dump_context(switchto_context_t *ctx);
 void dump_pcb(pcb_t *p);
 void do_thread_create(void);

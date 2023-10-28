@@ -131,9 +131,9 @@ void do_move_cursor(void)
     int x, y;
     if (argint(0, &x) < 0 || argint(1, &y) < 0)
     {
-        myproc()->trapframe->a0() = -1;
+        mythread()->trapframe->a0() = -1;
         return;
     }
     screen_move_cursor(x, y);
-    myproc()->trapframe->a0() = 0;
+    mythread()->trapframe->a0() = 0;
 }

@@ -13,17 +13,17 @@
 handler_t irq_table[IRQC_COUNT];
 handler_t exc_table[EXCC_COUNT];
 
-void dump_kernel() {
+void dump_kernel() 
+{
 
 }
 
 static inline bool is_interrupt(uint64_t scause) { return (scause >> 63) != 0; }
 
-static inline uint64_t exception_code(uint64_t scause) {
-  return scause & 0xfff;
-}
+static inline uint64_t exception_code(uint64_t scause) { return scause & 0xfff; }
 
-void interrupt_helper(regs_context_t *regs, uint64_t stval, uint64_t scause) {
+void interrupt_helper(regs_context_t *regs, uint64_t stval, uint64_t scause) 
+{
   if (is_supervisor_mode()) {
     log(INTR, "Interrupt: scause: %lx, stval: %lx in supervisor mode", scause, stval);
     if (is_interrupt(scause)) {
@@ -46,9 +46,8 @@ void interrupt_helper(regs_context_t *regs, uint64_t stval, uint64_t scause) {
 
 void user_trap_ret() 
 {
-    uint64_t cur_time = get_ticks();
-    if (cur_time >= next_time) {
-      set_timer(next_time = cur_time + TIMER_INTERVAL);
+    if (get_ticks() >= next_time) {
+      set_timer(next_time += TIMER_INTERVAL);
       do_yield();
     }
     set_user_mode();
@@ -57,16 +56,19 @@ void user_trap_ret()
     ret_from_exception(current_running->trapframe);
 }
 
-void handle_irq_timer(regs_context_t *regs, uint64_t stval, uint64_t scause) {
+void handle_irq_timer(regs_context_t *regs, uint64_t stval, uint64_t scause) 
+{
   do_yield();
 }
 
-void first_irq_timer(regs_context_t *regs, uint64_t stval, uint64_t scause) {
+void first_irq_timer(regs_context_t *regs, uint64_t stval, uint64_t scause) 
+{
   irq_table[IRQC_S_TIMER] = handle_irq_timer;
   do_scheduler();
 }
 
-void init_exception() {
+void init_exception() 
+{
   irq_table[IRQC_S_TIMER] = first_irq_timer;
   irq_table[IRQC_U_TIMER] = handle_irq_timer;
   exc_table[EXCC_SYSCALL] = handle_syscall;
@@ -81,7 +83,8 @@ void init_exception() {
   setup_exception();
 }
 
-void handle_other(regs_context_t *regs, uint64_t stval, uint64_t scause) {
+void handle_other(regs_context_t *regs, uint64_t stval, uint64_t scause) 
+{
   char *reg_name[] = {
       "zero ", " ra  ", " sp  ", " gp  ", " tp  ", " t0  ", " t1  ", " t2  ",
       "s0/fp", " s1  ", " a0  ", " a1  ", " a2  ", " a3  ", " a4  ", " a5  ",

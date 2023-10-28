@@ -68,13 +68,11 @@ void sys_mutex_release(int mutex_idx)
 
 long sys_get_timebase(void) 
 {
-  invoke_syscall(SYSCALL_GET_TIMEBASE, IGNORE, IGNORE, IGNORE, IGNORE, IGNORE);
-  return 0;
+  return invoke_syscall(SYSCALL_GET_TIMEBASE, IGNORE, IGNORE, IGNORE, IGNORE, IGNORE);
 }
 
 long sys_get_tick(void) {
-  invoke_syscall(SYSCALL_GET_TICK, IGNORE, IGNORE, IGNORE, IGNORE, IGNORE);
-  return 0;
+  return invoke_syscall(SYSCALL_GET_TICK, IGNORE, IGNORE, IGNORE, IGNORE, IGNORE);
 }
 
 void sys_sleep(uint32_t time) {
