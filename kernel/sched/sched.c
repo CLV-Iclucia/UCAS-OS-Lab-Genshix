@@ -297,7 +297,11 @@ void do_thread_create()
   return ;
 }
 
-syscall_transfer_v_v(do_thread_yield, do_yield);
+void do_thread_yield(void) {
+  tcb_t *t = mythread();
+  do_yield();
+  t->trapframe->regs[10] = 0;
+}
 
 void do_thread_exit() 
 {

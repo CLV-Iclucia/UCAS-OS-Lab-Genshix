@@ -31,7 +31,7 @@
 #include <common.h>
 #include <type.h>
 
-#define TIMER_INTERVAL 1500000
+#define TIMER_INTERVAL 500000
 
 extern uint64_t time_base;
 extern uint64_t time_elapsed;

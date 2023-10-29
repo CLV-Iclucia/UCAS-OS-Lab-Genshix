@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <unistd.h>
 
-#define TOLERANCE 20
+#define TOLERANCE 10
 
 atomic_t yield_count1 = ATOMIC_INIT(0);
 atomic_t yield_count2 = ATOMIC_INIT(0);
@@ -19,7 +19,7 @@ void *thread1_function(void *arg) {
     atomic_inc(ptr_var1);
     sys_move_cursor(0, line1);
     printf("Thread 1: var1 = %d\n", atomic_read(ptr_var1));
-    if (atomic_read(ptr_var1) - atomic_read(&var2) > TOLERANCE) {
+    if (atomic_read(ptr_var1) - atomic_read(&var2) >= TOLERANCE) {
       atomic_inc(&yield_count1);
       pthread_yield();
     }
@@ -33,7 +33,7 @@ void *thread2_function(void *arg) {
     atomic_inc(ptr_var2);
     sys_move_cursor(0, line2);
     printf("Thread 2: var2 = %d\n", atomic_read(ptr_var2));
-    if (atomic_read(ptr_var2) - atomic_read(&var1) > TOLERANCE) {
+    if (atomic_read(ptr_var2) - atomic_read(&var1) >= TOLERANCE) {
       atomic_inc(&yield_count2);
       pthread_yield();
     }

@@ -29,6 +29,12 @@
 #define META_OFFSET_ADDR 0x502001f4
 int version = 2; // version must between 0 and 9
 char buf[version_buf];
+char welcome[] = 
+"========================================\n"
+"               Genshix\n"
+"\n"
+"Welcome to the world of Genshix!\n"
+"========================================\n";
 #define TASK_MAXNUM 16
 uint32_t tasknum;
 // task info array
@@ -271,15 +277,9 @@ int main(void)
     // Init screen (QAQ)
     init_screen();
     printk("> [INIT] SCREEN initialization succeeded.\n");
-
-    printk("Are you ready for timer interrupts?\nPress any key to continue...\n");
-    getchar();
-    printk("Are you ready for all the weird bugs ahead?\nPress any key to continue...\n");
-    getchar();
-    printk("Good luck, then.\n");
-    printk("time base: %lx\n", time_base);
+    printk("%s", welcome);
     latency(2);
-    screen_clear();
+    screen_reflush();
     w_sscratch((uint64_t)(sched_tcb.trapframe));
     while (1)
     {
