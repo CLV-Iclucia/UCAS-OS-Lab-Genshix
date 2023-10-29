@@ -14,6 +14,6 @@
 #define SYSCALL_STRACE 43        // In the future maybe I need to change this
 #define SYSCALL_THREAD_CREATE 44
 #define SYSCALL_THREAD_EXIT 45
-#define SYSCALL_THREAD_YIELD 47
+#define SYSCALL_THREAD_YIELD 46
 
 #endif

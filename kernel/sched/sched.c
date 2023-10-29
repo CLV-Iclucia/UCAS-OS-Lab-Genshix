@@ -7,9 +7,12 @@
 #include <os/sched.h>
 #include <os/string.h>
 #include <os/time.h>
+#include <os/csr.h>
 #include <printk.h>
 #include <screen.h>
 #include <sys/syscall.h>
+
+extern void user_trap_ret();
 
 pcb_t pcb[NUM_MAX_TASK];
 tcb_t tcb[NUM_MAX_THREADS];
@@ -80,7 +83,7 @@ static void push_tcb(tcb_t* t)
   tcb_pool_queue[tcb_pool_queue_tail] = t - tcb;
 }
 
-tcb_t* new_tcb(pcb_t* p) 
+tcb_t* new_tcb(pcb_t* p, ptr_t entry) 
 {
   tcb_t* t = alloc_tcb();
   if (t == NULL)
@@ -92,8 +95,13 @@ tcb_t* new_tcb(pcb_t* p)
   t->wakeup_time = 0;
   t->kernel_sp = allocKernelPage(1);
   t->trapframe = (regs_context_t*)allocKernelPage(1);
-  t->trapframe->kernel_sp = t->kernel_sp + PAGE_SIZE;
   t->user_sp = allocUserPage(1);
+  t->trapframe->kernel_sp = t->kernel_sp + PAGE_SIZE;
+  t->trapframe->sstatus = SR_SPIE;
+  t->trapframe->sp() = t->user_sp + PAGE_SIZE;
+  t->trapframe->sepc = entry;
+  t->ctx->ra = (uint64_t)user_trap_ret;
+  t->ctx->sp = t->kernel_sp + PAGE_SIZE;
   t->pcb = p;
   t->list.next = t->list.prev = &(t->list);
   t->thread_list.next = t->thread_list.prev = &(t->thread_list);
@@ -102,7 +110,7 @@ tcb_t* new_tcb(pcb_t* p)
   return t;
 }
 
-pcb_t *new_pcb(const char *name) 
+pcb_t *new_pcb(const char *name, ptr_t entry) 
 {
   pcb_t *p = alloc_pcb();
   if (p == NULL) {
@@ -114,7 +122,7 @@ pcb_t *new_pcb(const char *name)
   strcpy(p->name, name);
   p->num_threads = 0;
   p->threads.next = p->threads.prev = &(p->threads);
-  if (new_tcb(p) == NULL)
+  if (new_tcb(p, entry) == NULL)
     return NULL;
   return p;
 }
@@ -278,13 +286,11 @@ void do_thread_create()
   ptr_t thread_attr_ptr = argraw(1); 
   ptr_t routine_ptr = argraw(2);
   ptr_t arg_ptr = argraw(3);
-  tcb_t* nt = new_tcb(p);
+  tcb_t* nt = new_tcb(p, routine_ptr);
   if (nt == NULL) {
     t->trapframe->a0() = -1;
     return ;
   }
-  nt->trapframe->sepc = routine_ptr;
-  nt->trapframe->sp() = nt->user_sp + PAGE_SIZE;
   nt->trapframe->a0() = arg_ptr;
   *(thread_t*)thread_ptr = nt - tcb;
   t->trapframe->a0() = 0;

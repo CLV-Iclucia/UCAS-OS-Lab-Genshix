@@ -163,6 +163,7 @@ static char* init_tasks[] =
     "lock2",
     "sleep",
     "timer",
+    "threads",
     "",
 };
 
@@ -176,15 +177,10 @@ static void init_pcb(void)
         if (init_tasks[i][0] == '\0') break;
         printl("loading task %s\n", init_tasks[i]);
         uint32_t load_addr = (uint32_t)load_task_by_name(init_tasks[i]);
-        pcb_t* p = new_pcb(init_tasks[i]);
+        pcb_t* p = new_pcb(init_tasks[i], load_addr);
         if (p == NULL) panic("new_pcb failed!\n\r");
         tcb_t* t = main_thread(p);
-        t->ctx->ra = (uint64_t)user_trap_ret;
-        t->ctx->sp = t->kernel_sp + PAGE_SIZE;
-        t->trapframe->sp() = t->user_sp;
-        t->trapframe->sepc = load_addr;
-        t->trapframe->sstatus = SR_SPIE;
-        t->trapframe->kernel_sp = t->kernel_sp + PAGE_SIZE;
+        
     }
     next_running = list_tcb(ready_queue.next);
     log_block(PROC, dump_all_threads());

@@ -202,8 +202,8 @@ void do_block(list_node_t *, list_head *queue);
 void do_unblock(list_node_t *);
 tcb_t *alloc_tcb();
 pcb_t *alloc_pcb();
-tcb_t *new_tcb(pcb_t *p);
-pcb_t *new_pcb(const char *name);
+tcb_t *new_tcb(pcb_t *p, ptr_t entry);
+pcb_t *new_pcb(const char *name, ptr_t entry);
 
 static inline void update_next() 
 {
