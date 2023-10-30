@@ -6,6 +6,7 @@
 uint64_t time_elapsed = 0;
 uint64_t time_base = 0;
 uint64_t next_time = 0;
+bool timer_needs_reset = false;
 uint64_t get_ticks()
 {
     __asm__ __volatile__(

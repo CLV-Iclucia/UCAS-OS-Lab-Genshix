@@ -93,6 +93,7 @@ tcb_t* new_tcb(pcb_t* p, ptr_t entry)
   t->tid = p->num_threads++;
   t->lock_bitmask = 0;
   t->wakeup_time = 0;
+  t->sched_cnt = 0;
   t->kernel_sp = allocKernelPage(1);
   t->trapframe = (regs_context_t*)allocKernelPage(1);
   t->user_sp = allocUserPage(1);
@@ -215,6 +216,8 @@ void do_scheduler(void)
     assert(current_running->status == TASK_READY);
     current_running->status = TASK_RUNNING;
     log_block(PROC, dump_tcb(current_running));
+    current_running->sched_cnt++;
+    timer_needs_reset = true;
     switch_to(&sched_ctx, current_running->ctx);
   }
 }
@@ -314,4 +317,11 @@ void do_thread_exit()
   do_scheduler();
   if ((int*)retval != NULL)
     *(int*)retval = 0;
+}
+
+void do_sched_times()
+{
+  tcb_t* t = mythread();
+  tcb_t* thread = &tcb[argraw(0)];
+  t->trapframe->a0() = thread->sched_cnt;
 }

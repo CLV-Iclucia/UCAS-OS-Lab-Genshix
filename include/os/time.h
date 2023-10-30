@@ -31,13 +31,14 @@
 #include <common.h>
 #include <type.h>
 
-#define TIMER_INTERVAL 500000
+#define TIMER_INTERVAL 300000
 
 extern uint64_t time_base;
 extern uint64_t time_elapsed;
 extern uint64_t next_time;
 extern uint64_t enter_time;
 extern uint64_t leave_time;
+extern bool timer_needs_reset;
 extern uint64_t get_timer(void);
 extern uint64_t get_ticks(void);
 extern uint64_t get_time_base(void);

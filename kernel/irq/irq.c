@@ -10,6 +10,7 @@
 #include <printk.h>
 #include <screen.h>
 #include <stdbool.h>
+extern bool timer_needs_reset;
 handler_t irq_table[IRQC_COUNT];
 handler_t exc_table[EXCC_COUNT];
 
@@ -24,6 +25,7 @@ static inline uint64_t exception_code(uint64_t scause) { return scause & 0xfff; 
 
 void interrupt_helper(regs_context_t *regs, uint64_t stval, uint64_t scause) 
 {
+  timer_needs_reset = false;
   if (is_supervisor_mode()) {
     log(INTR, "Interrupt: scause: %lx, stval: %lx in supervisor mode", scause, stval);
     if (is_interrupt(scause)) {
@@ -46,14 +48,21 @@ void interrupt_helper(regs_context_t *regs, uint64_t stval, uint64_t scause)
 
 void user_trap_ret() 
 {
-    if (get_ticks() >= next_time) {
-      set_timer(next_time += TIMER_INTERVAL);
-      do_yield();
-    }
-    set_user_mode();
-    w_stvec((uint64_t)exception_handler_entry);
-    update_interrupt();
-    ret_from_exception(current_running->trapframe);
+  bool needs_reset = false;
+  if (timer_needs_reset)
+    needs_reset = true;
+  else if (get_ticks() >= next_time) {
+    do_yield();
+    needs_reset = true;
+  }
+  if (needs_reset) {
+    next_time = get_ticks() + TIMER_INTERVAL;
+    set_timer(next_time);
+  }
+  set_user_mode();
+  w_stvec((uint64_t)exception_handler_entry);
+  update_interrupt();
+  ret_from_exception(current_running->trapframe);
 }
 
 void handle_irq_timer(regs_context_t *regs, uint64_t stval, uint64_t scause) 

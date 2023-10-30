@@ -6,7 +6,6 @@
 #include <pthread.h>
 
 static const long IGNORE = 0L;
-
 static long invoke_syscall(long sysno, long arg0, long arg1, long arg2,
                            long arg3, long arg4) 
 {
@@ -83,6 +82,10 @@ void sys_strace(uint64_t strace_bitmask) {
   invoke_syscall(SYSCALL_STRACE, strace_bitmask, IGNORE, IGNORE, IGNORE, IGNORE);
 }
 
+int sys_get_sched_times(pthread_t thread) {
+  return invoke_syscall(SYSCALL_GET_SCHED_TIMES, thread, IGNORE, IGNORE, IGNORE, IGNORE);
+}
+
 int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
                    void *(*start_routine)(void *), void *arg) 
 {
@@ -99,6 +102,7 @@ void pthread_exit(void *retval)
 {
   invoke_syscall(SYSCALL_THREAD_EXIT, (long)retval, IGNORE, IGNORE, IGNORE, IGNORE);
 }
+
 /************************************************************/
 /* Do not touch this comment. Reserved for future projects. */
 /************************************************************/

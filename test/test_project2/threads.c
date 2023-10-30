@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <unistd.h>
 
-#define TOLERANCE 10
+#define TOLERANCE 2
 
 atomic_t yield_count1 = ATOMIC_INIT(0);
 atomic_t yield_count2 = ATOMIC_INIT(0);
@@ -52,9 +52,9 @@ int main() {
   }
   while (1) {
     sys_move_cursor(0, line1 + 2);
-    printf("Thread 1 yielded %ld times\n", atomic_read(&yield_count1));
+    printf("Thread 1 yielded %ld times, is scheduled %d times\n", atomic_read(&yield_count1), sys_get_sched_times(thread1));
     sys_move_cursor(0, line2 + 2);
-    printf("Thread 2 yielded %ld times\n", atomic_read(&yield_count2));
+    printf("Thread 2 yielded %ld times, is scheduled %d times\n", atomic_read(&yield_count2), sys_get_sched_times(thread2));
   }
 
   return 0;

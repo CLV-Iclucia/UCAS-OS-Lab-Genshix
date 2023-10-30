@@ -185,8 +185,6 @@ static void init_pcb(void)
         uint32_t load_addr = (uint32_t)load_task_by_name(init_tasks[i]);
         pcb_t* p = new_pcb(init_tasks[i], load_addr);
         if (p == NULL) panic("new_pcb failed!\n\r");
-        tcb_t* t = main_thread(p);
-        
     }
     next_running = list_tcb(ready_queue.next);
     log_block(PROC, dump_all_threads());
@@ -218,6 +216,7 @@ static void init_syscall(void)
     register_syscall(SYSCALL_THREAD_CREATE, thread_create);
     register_syscall(SYSCALL_THREAD_EXIT, thread_exit);
     register_syscall(SYSCALL_THREAD_YIELD, thread_yield);
+    register_syscall(SYSCALL_GET_SCHED_TIMES, sched_times);
 }
 
 /************************************************************/

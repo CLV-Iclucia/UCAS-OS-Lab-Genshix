@@ -154,7 +154,7 @@ typedef struct tcb {
   /* cursor position */
   int cursor_x;
   int cursor_y;
-
+  int sched_cnt;
   /* time(seconds) to wake up sleeping PCB */
   uint64_t wakeup_time;
   switchto_context_t *ctx;
@@ -226,6 +226,7 @@ void dump_pcb(pcb_t *p);
 void do_thread_create(void);
 void do_thread_exit(void);
 void do_thread_yield(void);
+void do_sched_times(void);
 /************************************************************/
 /* Do not touch this comment. Reserved for future projects. */
 /************************************************************/

@@ -1,6 +1,7 @@
 #ifndef __UNISTD_H__
 #define __UNISTD_H__
 
+#include <pthread.h>
 #include <stdint.h>
 
 void sys_sleep(uint32_t time);
@@ -14,6 +15,7 @@ int sys_mutex_init(int key);
 void sys_mutex_acquire(int mutex_idx);
 void sys_mutex_release(int mutex_idx);
 void sys_strace(uint64_t strace_bitmask);
+int sys_get_sched_times(pthread_t);
 /************************************************************/
 /* Do not touch this comment. Reserved for future projects. */
 /************************************************************/
