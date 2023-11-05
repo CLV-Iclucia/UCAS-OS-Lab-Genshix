@@ -3,7 +3,6 @@
 
 ENTRY(setup_exception)
 
-  /* TODO: [p2-task3] save exception_handler_entry into STVEC */
   la t0, exception_handler_entry
   csrw stvec, t0
   csrr t0, sie

@@ -18,6 +18,7 @@ end_loop:
     call main
     ld ra, 0(sp)
     addi sp, sp, 8
+    // TODO[p3]: call exit
     ret
     /************************************************************/
 	/* Do not touch this comment. Reserved for future projects. */

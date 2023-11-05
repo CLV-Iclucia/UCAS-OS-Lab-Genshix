@@ -229,6 +229,14 @@ void do_thread_yield(void);
 void do_sched_times(void);
 /************************************************************/
 /* Do not touch this comment. Reserved for future projects. */
+/* TODO [P3-TASK1] exec exit kill waitpid ps*/
+extern pid_t do_exec(char *name, int argc, char *argv[]);
+extern void do_exit(void);
+extern int do_kill(pid_t pid);
+extern int do_waitpid(pid_t pid);
+extern void do_process_show();
+extern pid_t do_getpid();
+
 /************************************************************/
 
 #endif
