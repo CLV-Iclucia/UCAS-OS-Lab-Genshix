@@ -18,11 +18,15 @@
 main:
 	// fence on all memory and I/O
 	fence
-	// [p1-task1] call BIOS to print string "It's bootblock!"
+  // if a0 = 1, branch to booting_cpu1
+  // else, branch to booting_cpu0
+  li t0, 1
+  beq a0, t0, booting_cpu1
+  j booting_cpu0
+booting_cpu0:
     li a7, 9
-    la a0, msg
+    la a0, cpu0_msg
     jal bios_func_entry
-	// load decompressor
   // decompressor_size = user_start_offset - os_size - 512
     la t0, user_start_offset_loc
     ld s2, 0(t0)
@@ -43,16 +47,10 @@ main:
     la t0, decompressor_loc
     jalr ra, 0(t0)
     bnez a0, done
-    li a7, 9
-    la a0, err_msg
-    jal bios_func_entry
     j kernel
 done:
   // before jumping to the kernel, remove the first instruction of decompressor
   // so that if we execute the decompressor in the future by mistake it will immmediately stop
-    li a7, 9
-    la a0, done_msg
-    jal bios_func_entry
     la t0, decompressor_loc
     sd zero, 0(t0)
   // now we can jump to the kernel
@@ -65,8 +63,21 @@ stop:
 	j stop
 	nop
 
+booting_cpu1:
+  li a7, 9
+  la a0, cpu1_msg
+  jal bios_func_entry
+  la t0, kernel
+  csrw stvec, t0
+  not t0, x0
+  csrs 0x104, t0
+  csrr t0, sstatus
+  ori t0, t0, 2
+  csrw sstatus, t0
+loop:
+  wfi
+  j loop
 .data
 
-msg: .string "It's a bootloader...\n\r"
-err_msg: .string "Decompression failed...\n\r"
-done_msg: .string "Decompression done.\n\r"
+cpu0_msg: .string "CPU 0 booting\n\r"
+cpu1_msg: .string "CPU 1 booting\n\r"

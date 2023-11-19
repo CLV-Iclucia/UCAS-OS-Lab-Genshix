@@ -49,7 +49,6 @@ typedef list_node_t list_head;
 
 // LIST_HEAD is used to define the head of a list.
 #define LIST_HEAD(name) struct list_node name = {&(name), &(name)}
-/* TODO: [p2-task1] implement your own list API */
 #define LIST_INSERT_HEAD(head, node) \
     {                                \
         (node)->next = (head)->next; \
@@ -71,5 +70,6 @@ typedef list_node_t list_head;
     {                     \
         (node)->prev->next = (node)->next; \
         (node)->next->prev = (node)->prev; \
+        (node)->next = (node)->prev = NULL;   \
     }
 #endif

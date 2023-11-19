@@ -1,12 +1,11 @@
 #include <os/time.h>
 #include <os/list.h>
 #include <os/sched.h>
+#include <os/smp.h>
 #include <sys/syscall.h>
 #include <type.h>
 uint64_t time_elapsed = 0;
 uint64_t time_base = 0;
-uint64_t next_time = 0;
-bool timer_needs_reset = false;
 uint64_t get_ticks()
 {
     __asm__ __volatile__(
@@ -36,12 +35,14 @@ void latency(uint64_t time)
 syscall_transfer_i_v(do_get_tick, get_ticks)
 syscall_transfer_i_v(do_get_timebase, get_time_base)
 
+// must be called with sleep_queue_lock held
 void check_sleeping(void)
 {
     // TODO: run through the list is too slow, manage the sleeping queue with other data structure
-    list_node_t* t = sleep_queue.next;
+    cpu_t *c = mycpu();
+    list_node_t* t = c->sleep_queue.next;
     list_node_t* t_next = t->next;
-    while (t != &sleep_queue) {
+    while (t != &(c->sleep_queue)) {
         tcb_t* tcb = list_tcb(t);
         if (tcb->wakeup_time <= get_ticks())
             do_unblock(t);

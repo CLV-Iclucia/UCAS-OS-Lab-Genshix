@@ -4,19 +4,11 @@
 #include <time.h>
 #include <assert.h>
 
-#ifdef S_CORE
-int main(int argc, int arg0, int arg1)
-{
-    assert(argc >= 2);
-    int print_location = arg0;
-    int handle = arg1;
-#else
 int main(int argc, char *argv[])
 {
     assert(argc >= 3);
     int print_location = atoi(argv[1]);
     int handle = atoi(argv[2]);
-#endif
 
     // Set random seed
     srand(clock());

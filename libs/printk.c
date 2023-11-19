@@ -40,6 +40,7 @@
  * a chip with 32kB flash is crazy. Use mini_snprintf() instead.
  *
  */
+#include <os/lock.h>
 #include <screen.h>
 #include <stdarg.h>
 #include <os/sched.h>
@@ -257,13 +258,17 @@ int vprintk(const char *fmt, va_list _va)
 
 int printk(const char *fmt, ...)
 {
+    static spin_lock_t lock = {
+        .cpuid = -1,
+        .status = UNLOCKED,
+    };
     int ret = 0;
     va_list va;
-
     va_start(va, fmt);
+    spin_lock_acquire(&lock);
     ret = vprintk(fmt, va);
+    spin_lock_release(&lock);
     va_end(va);
-
     return ret;
 }
 

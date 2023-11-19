@@ -27,19 +27,21 @@
 #define MM_H
 
 #include <type.h>
+#include <os/smp.h>
 
 #define MEM_SIZE 32
 #define PAGE_SIZE 4096 // 4K
-#define INIT_KERNEL_STACK 0x50500000
+#define INIT_KERNEL_STACK 0x50502000
 #define INIT_USER_STACK 0x52500000
-#define FREEMEM_KERNEL (INIT_KERNEL_STACK+PAGE_SIZE)
-#define FREEMEM_USER (INIT_USER_STACK+PAGE_SIZE)
+#define FREEMEM_KERNEL (INIT_KERNEL_STACK + NR_CPUS * PAGE_SIZE)
+#define FREEMEM_USER (INIT_USER_STACK + PAGE_SIZE)
 
 /* Rounding; only works for n = power of two */
 #define ROUND(a, n)     (((((uint64_t)(a))+(n)-1)) & ~((n)-1))
 #define ROUNDDOWN(a, n) (((uint64_t)(a)) & ~((n)-1))
 #define LOWBIT(x) ((x) & (-(x)))
 
+extern void initMemoryAllocator();
 extern ptr_t allocKernelPage(int numPage);
 extern ptr_t allocUserPage(int numPage);
 extern void freeKernelPage(ptr_t addr);

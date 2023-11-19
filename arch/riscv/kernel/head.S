@@ -6,14 +6,16 @@
 #include <asm.h>
 #include <csr.h>
 
-#define KERNEL_STACK		0x50500000
+#define KERNEL_STACK_0		0x50500000
+#define KERNEL_STACK_1    0x50502000
 
 .section ".entry_function","ax"
 ENTRY(_start)
-  /* Mask all interrupts */
   csrw CSR_SIE, zero
   csrw CSR_SIP, zero
-  /* TODO: [p1-task2] clear BSS for flat non-ELF images */
+  csrr t0, CSR_MHARTID
+  li t1, 1
+  beq t0, t1, hart_1
   lui t0, %hi(__bss_start)
   add t0, t0, %lo(__bss_start)
   lui t1, %hi(__BSS_END__)
@@ -24,8 +26,11 @@ clear_loop:
   addi t0, t0, 1
   j clear_loop
 end_loop:
-  /* TODO: [p1-task2] setup C environment */
-  li sp, KERNEL_STACK
+  li sp, KERNEL_STACK_0
+  j main
+
+hart_1:
+  li sp, KERNEL_STACK_1
   j main
 loop:
   wfi

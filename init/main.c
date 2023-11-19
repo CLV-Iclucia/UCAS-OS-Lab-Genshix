@@ -1,3 +1,4 @@
+#include <os/smp.h>
 #include <debugs.h>
 #include <asm.h>
 #include <os/kernel.h>
@@ -165,19 +166,16 @@ static char* init_tasks[] =
     "print2",
     "print1",
     "fly",
-    "lock1",
-    "lock2",
-    "sleep",
-    "timer",
-    "threads",
+     "lock1",
+     "lock2",
+     "sleep",
+    // "timer",
+    // "threads",
     "",
 };
 
 static void init_pcb(void)
 {
-    current_running = &sched_tcb;
-    current_running->trapframe = (regs_context_t*)allocKernelPage(1);
-    current_running->trapframe->kernel_sp = current_running->kernel_sp + PAGE_SIZE;
     for (int i = 0; i < tasknum; i++) {
         // load the task into the memory
         if (init_tasks[i][0] == '\0') break;
@@ -186,8 +184,6 @@ static void init_pcb(void)
         pcb_t* p = new_pcb(init_tasks[i], load_addr);
         if (p == NULL) panic("new_pcb failed!\n\r");
     }
-    next_running = list_tcb(ready_queue.next);
-    log_block(PROC, dump_all_threads());
 }
 
 #define register_syscall(id, name)\
@@ -216,7 +212,6 @@ static void init_syscall(void)
     register_syscall(SYSCALL_THREAD_CREATE, thread_create);
     register_syscall(SYSCALL_THREAD_EXIT, thread_exit);
     register_syscall(SYSCALL_THREAD_YIELD, thread_yield);
-    register_syscall(SYSCALL_GET_SCHED_TIMES, sched_times);
 }
 
 /************************************************************/
@@ -246,40 +241,42 @@ static void init_task_info(void)
 
 int main(void)
 {
-    int check = bss_check();
-    if (!check)
-      init_panic("bss check failed!\n\r");
-    // Init jump table provided by kernel and bios(ΦωΦ)
-    init_jmptab();
-    // Init task information (〃'▽'〃)
-    init_task_info();
-    init_pool();
+    if (mycpuid() == 0) {
+        int check = bss_check();
+        if (!check)
+            init_panic("bss check failed!\n\r");
+        initMemoryAllocator();
+        smp_init();
+        // Init jump table provided by kernel and bios(ΦωΦ)
+        init_jmptab();
+        // Init task information (〃'▽'〃)
+        init_task_info();
+        init_pool();
+        // Init lock mechanism o(´^｀)o
+        init_locks();
+        // Init interrupt (^_^)
+        init_exception();
+        // Init system call table (0_0)
+        init_syscall();
+        // Init screen (QAQ)
+        init_screen();
+        // Read CPU frequency (｡•ᴗ-)_
+        // assume the two harts have the same frequency
+        time_base = bios_read_fdt(TIMEBASE);
+        init_pcb();
+        wakeup_other_hart();
+    } else {
+        printk("CPU %d: Hello there, CPU 0!\n", mycpuid());
+        init_exception();
+    }
     // Init Process Control Blocks |•'-'•) ✧
-    init_pcb();
-    printk("> [INIT] PCB initialization succeeded.\n");
-
-    // Read CPU frequency (｡•ᴗ-)_
-    time_base = bios_read_fdt(TIMEBASE);
-    set_timer(time_base);
-    // Init lock mechanism o(´^｀)o
-    init_locks();
-    printk("> [INIT] Lock mechanism initialization succeeded.\n");
-
-    // Init interrupt (^_^)
-    init_exception();
-    printk("> [INIT] Interrupt processing initialization succeeded.\n");
-
-    // Init system call table (0_0)
-    init_syscall();
-    printk("> [INIT] System call initialized successfully.\n");
-
-    // Init screen (QAQ)
-    init_screen();
-    printk("> [INIT] SCREEN initialization succeeded.\n");
-    printk("%s", welcome);
+    printk("CPU %d: Hello there, adventurer!\n", mycpuid());
     latency(2);
-    screen_reflush();
-    w_sscratch((uint64_t)(sched_tcb.trapframe));
+
+    if (mycpuid() == 0)
+        screen_clear();
+    set_timer(time_base);
+    w_sscratch((uint64_t)(mythread()->trapframe));
     while (1)
     {
         // If you do preemptive scheduling, they're used to enable CSR_SIE and wfi

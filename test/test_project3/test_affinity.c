@@ -19,7 +19,6 @@ char * test[] =
 
 int main(int argc, char * argv[])
 {
-#ifndef S_CORE
     pid_t pid = sys_getpid();
     
     assert(argc >= 1);
@@ -37,7 +36,6 @@ int main(int argc, char * argv[])
         printf("access: %s ", test[rand()%6]);
         printf("auipc: %lx\r\n", testpc);
     }
-#endif
 
     return 0;
 }

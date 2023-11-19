@@ -28,6 +28,7 @@
 #ifndef INCLUDE_TIME_H_
 #define INCLUDE_TIME_H_
 
+#include <os/smp.h>
 #include <common.h>
 #include <type.h>
 
@@ -36,8 +37,6 @@
 extern uint64_t time_base;
 extern uint64_t time_elapsed;
 extern uint64_t next_time;
-extern uint64_t enter_time;
-extern uint64_t leave_time;
 extern bool timer_needs_reset;
 extern uint64_t get_timer(void);
 extern uint64_t get_ticks(void);
@@ -48,10 +47,4 @@ extern void latency(uint64_t time);
 
 extern void check_sleeping(void);
 
-static inline void update_interrupt() {
-    uint64_t tick = get_ticks();
-    if (tick < next_time)
-        return;
-    set_timer(next_time = tick + TIMER_INTERVAL);
-}
 #endif

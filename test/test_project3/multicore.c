@@ -22,7 +22,6 @@ struct TestMultiCoreArg
 
 int main(int argc, char* argv[])
 {
-#ifndef S_CORE
     assert(argc >= 1);
     int print_location = (argc == 1) ? 0 : atoi(argv[1]);
     sys_move_cursor(0, print_location);
@@ -79,7 +78,6 @@ int main(int argc, char* argv[])
     clock_t multiCoreEnd = clock();
     sys_move_cursor(0, print_location + 6);
     printf("multi core: %ld ticks, result = %d             \n\r", multiCoreEnd - multiCoreBegin, multi_core_final_result);
-#endif
 
     sys_exit();    
 }

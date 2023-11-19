@@ -22,7 +22,6 @@ static int clientInitReq(const char* buf, int length)
 
 int main(int argc, char *argv[])
 {
-#ifndef S_CORE
     assert(argc >= 1);
     int print_location = (argc == 1) ? 0 : atoi(argv[1]);
 
@@ -65,7 +64,6 @@ int main(int argc, char *argv[])
 
         sys_sleep(1);
     }
-#endif
 
     return 0;
 }

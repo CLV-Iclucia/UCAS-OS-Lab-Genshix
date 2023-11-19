@@ -8,7 +8,6 @@
 
 int main(int argc, char *argv[])
 {
-#ifndef S_CORE
     assert(argc >= 1);
     int print_location = (argc == 1) ? 0 : atoi(argv[1]);
 
@@ -29,7 +28,6 @@ int main(int argc, char *argv[])
     for (int i = 0; i < INTEGER_TEST_NUM; ++i) {
         sys_waitpid(pids[i]);
     }
-#endif
 
     return 0;
 }

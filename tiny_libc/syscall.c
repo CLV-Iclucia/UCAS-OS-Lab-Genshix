@@ -2,90 +2,105 @@
 #include <stdint.h>
 #include <kernel.h>
 #include <unistd.h>
+#include <pthread.h>
 
 static const long IGNORE = 0L;
 
 static long invoke_syscall(long sysno, long arg0, long arg1, long arg2,
                            long arg3, long arg4)
 {
-    /* TODO: [p2-task3] implement invoke_syscall via inline assembly */
-    asm volatile("nop");
+    long ret;
+    asm volatile("mv a0, %1\n\t"
+               "mv a1, %2\n\t"
+               "mv a2, %3\n\t"
+               "mv a3, %4\n\t"
+               "mv a4, %5\n\t"
+               "mv a7, %6\n\t"
+               "ecall\n\t"
+               "mv %0, a0\n\t"
+               : "=r"(ret)
+               : "r"(arg0), "r"(arg1), "r"(arg2), "r"(arg3), "r"(arg4),
+                 "r"(sysno)
+               : "a0", "a1", "a2", "a3", "a4", "a7");
+  return ret;
 
     return 0;
 }
 
-void sys_yield(void)
+void sys_yield(void) 
 {
-    /* TODO: [p2-task1] call call_jmptab to implement sys_yield */
-    /* TODO: [p2-task3] call invoke_syscall to implement sys_yield */
+  invoke_syscall(SYSCALL_YIELD, IGNORE, IGNORE, IGNORE, IGNORE, IGNORE);
 }
 
-void sys_move_cursor(int x, int y)
+void sys_move_cursor(int x, int y) 
 {
-    /* TODO: [p2-task1] call call_jmptab to implement sys_move_cursor */
-    /* TODO: [p2-task3] call invoke_syscall to implement sys_move_cursor */
+  invoke_syscall(SYSCALL_CURSOR, x, y, IGNORE, IGNORE, IGNORE);
 }
 
-void sys_write(char *buff)
+void sys_write(char *buff) 
 {
-    /* TODO: [p2-task1] call call_jmptab to implement sys_write */
-    /* TODO: [p2-task3] call invoke_syscall to implement sys_write */
+  invoke_syscall(SYSCALL_WRITE, (long)buff, IGNORE, IGNORE, IGNORE, IGNORE);
 }
 
-void sys_reflush(void)
+void sys_reflush(void) 
 {
-    /* TODO: [p2-task1] call call_jmptab to implement sys_reflush */
-    /* TODO: [p2-task3] call invoke_syscall to implement sys_reflush */
+  invoke_syscall(SYSCALL_REFLUSH, IGNORE, IGNORE, IGNORE, IGNORE, IGNORE);
 }
 
-int sys_mutex_init(int key)
+int sys_mutex_init(int key) 
 {
-    /* TODO: [p2-task2] call call_jmptab to implement sys_mutex_init */
-    /* TODO: [p2-task3] call invoke_syscall to implement sys_mutex_init */
-    return 0;
+  return invoke_syscall(SYSCALL_LOCK_INIT, key, IGNORE, IGNORE, IGNORE, IGNORE);
 }
 
-void sys_mutex_acquire(int mutex_idx)
+void sys_mutex_acquire(int mutex_idx) 
 {
-    /* TODO: [p2-task2] call call_jmptab to implement sys_mutex_acquire */
-    /* TODO: [p2-task3] call invoke_syscall to implement sys_mutex_acquire */
+  invoke_syscall(SYSCALL_LOCK_ACQ, mutex_idx, IGNORE, IGNORE, IGNORE, IGNORE);
 }
 
-void sys_mutex_release(int mutex_idx)
+void sys_mutex_release(int mutex_idx) 
 {
-    /* TODO: [p2-task2] call call_jmptab to implement sys_mutex_release */
-    /* TODO: [p2-task3] call invoke_syscall to implement sys_mutex_release */
+  invoke_syscall(SYSCALL_LOCK_RELEASE, mutex_idx, IGNORE, IGNORE, IGNORE, IGNORE);
 }
 
-long sys_get_timebase(void)
+long sys_get_timebase(void) 
 {
-    /* TODO: [p2-task3] call invoke_syscall to implement sys_get_timebase */
-    return 0;
+  return invoke_syscall(SYSCALL_GET_TIMEBASE, IGNORE, IGNORE, IGNORE, IGNORE, IGNORE);
 }
 
-long sys_get_tick(void)
-{
-    /* TODO: [p2-task3] call invoke_syscall to implement sys_get_tick */
-    return 0;
+long sys_get_tick(void) {
+  return invoke_syscall(SYSCALL_GET_TICK, IGNORE, IGNORE, IGNORE, IGNORE, IGNORE);
 }
 
-void sys_sleep(uint32_t time)
-{
-    /* TODO: [p2-task3] call invoke_syscall to implement sys_sleep */
+void sys_sleep(uint32_t time) {
+  invoke_syscall(SYSCALL_SLEEP, time, IGNORE, IGNORE, IGNORE, IGNORE);
 }
 
-/************************************************************/
-#ifdef S_CORE
-pid_t  sys_exec(int id, int argc, uint64_t arg0, uint64_t arg1, uint64_t arg2)
+void sys_strace(uint64_t strace_bitmask) {
+  invoke_syscall(SYSCALL_STRACE, strace_bitmask, IGNORE, IGNORE, IGNORE, IGNORE);
+}
+
+int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
+                   void *(*start_routine)(void *), void *arg) 
 {
-    /* TODO: [p3-task1] call invoke_syscall to implement sys_exec for S_CORE */
-}    
-#else
+  return invoke_syscall(SYSCALL_THREAD_CREATE, (long)thread, (long)attr,
+                        (long)start_routine, (long)arg, IGNORE);
+}
+
+void pthread_yield(void) 
+{
+  invoke_syscall(SYSCALL_THREAD_YIELD, IGNORE, IGNORE, IGNORE, IGNORE, IGNORE);
+}
+
+void pthread_exit(void *retval)
+{
+  invoke_syscall(SYSCALL_THREAD_EXIT, (long)retval, IGNORE, IGNORE, IGNORE, IGNORE);
+}
+
+
 pid_t  sys_exec(char *name, int argc, char **argv)
 {
     /* TODO: [p3-task1] call invoke_syscall to implement sys_exec */
 }
-#endif
 
 void sys_exit(void)
 {

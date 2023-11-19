@@ -1,3 +1,5 @@
+#include "os/smp.h"
+#include <os/lock.h>
 #include <sys/syscall.h>
 #include <screen.h>
 #include <printk.h>
@@ -16,6 +18,11 @@ extern int argint(int n, int* ip);
 /* screen buffer */
 char new_screen[SCREEN_HEIGHT * SCREEN_WIDTH] = {0};
 char old_screen[SCREEN_HEIGHT * SCREEN_WIDTH] = {0};
+
+static spin_lock_t screen_lock = {
+    .status = UNLOCKED,
+    .cpuid = -1,
+};
 
 /* cursor position */
 static void vt100_move_cursor(int x, int y)
@@ -39,20 +46,21 @@ static void vt100_hidden_cursor()
 }
 
 /* write a char */
-static void screen_write_ch(char ch)
+static void screen_write_ch(char ch, tcb_t* t)
 {
     if (ch == '\n')
     {
-        current_running->cursor_x = 0;
-        current_running->cursor_y++;
+        t->cursor_x = 0;
+        t->cursor_y++;
     }
     else
     {
-        new_screen[SCREEN_LOC(current_running->cursor_x, current_running->cursor_y)] = ch;
-        current_running->cursor_x++;
+        new_screen[SCREEN_LOC(t->cursor_x, t->cursor_y)] = ch;
+        t->cursor_x++;
     }
 }
 
+// this should only be called by cpu 0
 void init_screen(void)
 {
     vt100_hidden_cursor();
@@ -62,6 +70,7 @@ void init_screen(void)
 
 void screen_clear(void)
 {
+    spin_lock_acquire(&screen_lock);
     int i, j;
     for (i = 0; i < SCREEN_HEIGHT; i++)
     {
@@ -70,27 +79,28 @@ void screen_clear(void)
             new_screen[SCREEN_LOC(j, i)] = ' ';
         }
     }
-    current_running->cursor_x = 0;
-    current_running->cursor_y = 0;
+    spin_lock_release(&screen_lock);
+    mythread()->cursor_x = 0;
+    mythread()->cursor_y = 0;
     screen_reflush();
 }
 
 void screen_move_cursor(int x, int y)
 {
-    current_running->cursor_x = x;
-    current_running->cursor_y = y;
     vt100_move_cursor(x, y);
 }
 
 void screen_write(char *buff)
 {
+    spin_lock_acquire(&screen_lock);
     int i = 0;
     int l = strlen(buff);
-
+    tcb_t* t = mythread();
     for (i = 0; i < l; i++)
     {
-        screen_write_ch(buff[i]);
+        screen_write_ch(buff[i], t);
     }
+    spin_lock_release(&screen_lock);
 }
 
 /*
@@ -101,6 +111,7 @@ void screen_write(char *buff)
  */
 void screen_reflush(void)
 {
+    spin_lock_acquire(&screen_lock);
     int i, j;
 
     /* here to reflush screen buffer to serial port */
@@ -119,7 +130,8 @@ void screen_reflush(void)
     }
 
     /* recover cursor position */
-    vt100_move_cursor(current_running->cursor_x, current_running->cursor_y);
+    vt100_move_cursor(mythread()->cursor_x, mythread()->cursor_y);
+    spin_lock_release(&screen_lock);
 }
 
 syscall_transfer_v_p(do_write, screen_write);
@@ -129,11 +141,13 @@ syscall_transfer_v_v(do_reflush, screen_reflush)
 void do_move_cursor(void)
 {
     int x, y;
+    tcb_t *t = mythread();
     if (argint(0, &x) < 0 || argint(1, &y) < 0)
     {
-        mythread()->trapframe->a0() = -1;
+        t->trapframe->a0() = -1;
         return;
     }
-    screen_move_cursor(x, y);
-    mythread()->trapframe->a0() = 0;
+    t->cursor_x = x;
+    t->cursor_y = y;
+    t->trapframe->a0() = 0;
 }

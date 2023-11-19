@@ -28,9 +28,11 @@
 #ifndef INCLUDE_LOCK_H_
 #define INCLUDE_LOCK_H_
 
+#include <os/smp.h>
 #include <os/list.h>
 
 #define LOCK_NUM 16
+#define CPU_NUM 2
 // bitmask for all the locks
 #define LOCK_MASK_ALL 0xffff
 #define LOCK_MASK_NONE 0x0000
@@ -49,22 +51,36 @@ static inline const char* lock_status_str(lock_status_t status)
 
 typedef struct spin_lock
 {
+    int cpuid;
     volatile lock_status_t status;
 } spin_lock_t;
 
+// all the constraints for lock:
+// 1. the block_queue cannot be broken
+// 2. the block_queues of different locks cannot overlap
+// 3. all the process in the block_queue cannot hold this lock
+// 4. lock can either be UNLOCKED or LOCKED
 typedef struct mutex_lock
 {
-    spin_lock_t lock;
+    spin_lock_t lock; // this lock locks not only the mutex_lock_t, but also the block_queue
     list_head block_queue;
     int key;
+    lock_status_t status;
 } mutex_lock_t;
 
 void init_locks(void);
-
 void spin_lock_init(spin_lock_t *lock);
 int spin_lock_try_acquire(spin_lock_t *lock);
 void spin_lock_acquire(spin_lock_t *lock);
 void spin_lock_release(spin_lock_t *lock);
+
+static inline volatile bool spin_lock_holding(spin_lock_t *lock) {
+    return lock->status == LOCKED && lock->cpuid == mycpuid();
+}
+
+static inline bool holding_no_spin_lock() {
+    return mycpu()->spin_lock_cnt == 0;
+}
 
 int do_mutex_lock_init(int key);
 void do_mutex_lock_acquire(int mlock_idx);
@@ -72,11 +88,14 @@ void do_mutex_lock_release(int mlock_idx);
 void do_mutex_init(void);
 void do_mutex_acquire(void);
 void do_mutex_release(void);
-void dump_lock(int lock_idx);
+
+typedef struct tcb tcb_t;
 /************************************************************/
 typedef struct barrier
 {
-    // TODO [P3-TASK2 barrier]
+    spin_lock_t lock;
+    uint32_t num;
+    list_head queue;
 } barrier_t;
 
 #define BARRIER_NUM 16
@@ -88,7 +107,8 @@ void do_barrier_destroy(int bar_idx);
 
 typedef struct condition
 {
-    // TODO [P3-TASK2 condition]
+    spin_lock_t lock;
+    list_head queue;
 } condition_t;
 
 #define CONDITION_NUM 16
@@ -102,7 +122,9 @@ void do_condition_destroy(int cond_idx);
 
 typedef struct semaphore
 {
-    // TODO [P3-TASK2 semaphore]
+    spin_lock_t lock;
+    int value;
+    list_head queue;
 } semaphore_t;
 
 #define SEMAPHORE_NUM 16
@@ -117,7 +139,13 @@ void do_semaphore_destroy(int sema_idx);
 
 typedef struct mailbox
 {
-    // TODO [P3-TASK2 mailbox]
+    spin_lock_t lock;
+    int length;
+    int head;
+    int tail;
+    int buf[MAX_MBOX_LENGTH];
+    list_head send_queue;
+    list_head recv_queue;
 } mailbox_t;
 
 #define MBOX_NUM 16

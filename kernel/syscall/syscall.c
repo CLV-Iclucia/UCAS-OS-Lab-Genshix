@@ -1,3 +1,4 @@
+#include "os/lock.h"
 #include <debugs.h>
 #include <os/sched.h>
 #include <printk.h>
@@ -54,6 +55,7 @@ void do_strace(void) {
 
 void handle_syscall(regs_context_t *regs, uint64_t interrupt, uint64_t cause) 
 {
+  assert(holding_no_spin_lock());
   int sysno = regs->a7();
   log_line(SYSCALL, "handling syscall: %d\n", sysno);
   log_block(INTR, dump_trapframe(regs));
@@ -68,4 +70,5 @@ void handle_syscall(regs_context_t *regs, uint64_t interrupt, uint64_t cause)
     else
       printk("%s(pid: %d), thread %d: unknown syscall %d\n", t->pcb->name, t->pcb->pid, t->tid, sysno);
   }
+  assert(holding_no_spin_lock());
 }

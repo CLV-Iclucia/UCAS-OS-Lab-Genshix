@@ -28,7 +28,6 @@ static int clientSendMsg(int mq, const char* content, int length)
 
 int main()
 {
-#ifndef S_CORE
     // open two mailboxs
     int handle_mq = sys_mbox_open(STR_MBOX);
     int handle_posmq = sys_mbox_open(POS_MBOX); 
@@ -55,7 +54,6 @@ int main()
         printf("[Client] send bytes: %ld, blocked: %d", bytes, blocked);
         sys_sleep(1);
     }
-#endif
 
     return 0;
 }

@@ -6,7 +6,6 @@
 
 int main(int argc, char *argv[])
 {
-#ifndef S_CORE
     if (argc < 5)
     {
         printf("Error: argc = %d\n", argc);
@@ -44,7 +43,5 @@ int main(int argc, char *argv[])
         sys_mutex_release(handle_lock);
         sys_sleep(next);
     }
-#endif
-
     return 0;
 }

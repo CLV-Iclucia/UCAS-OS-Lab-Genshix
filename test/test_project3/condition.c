@@ -13,7 +13,6 @@
 
 int main(int argc, char * argv[])
 {
-#ifndef S_CORE
     assert(argc >= 1);
     int print_location = (argc == 1) ? 0 : atoi(argv[1]);
 
@@ -67,7 +66,6 @@ int main(int argc, char * argv[])
     
     // Destroy condition
     sys_condition_destroy(handle_cond);
-#endif
 
     return 0;    
 }

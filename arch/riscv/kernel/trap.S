@@ -2,7 +2,6 @@
 #include <csr.h>
 
 ENTRY(setup_exception)
-
   la t0, exception_handler_entry
   csrw stvec, t0
   csrr t0, sie

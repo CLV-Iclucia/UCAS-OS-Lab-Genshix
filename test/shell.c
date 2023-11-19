@@ -33,11 +33,12 @@
 
 #define SHELL_BEGIN 20
 
+const char* prompt = "> root@UCAS_OS: ";
+
 int main(void)
 {
     sys_move_cursor(0, SHELL_BEGIN);
     printf("------------------- COMMAND -------------------\n");
-    printf("> root@UCAS_OS: ");
 
     while (1)
     {
@@ -47,6 +48,7 @@ int main(void)
         // note: backspace maybe 8('\b') or 127(delete)
 
         // TODO [P3-task1]: ps, exec, kill, clear    
+        printf("%s", prompt);
 
         /************************************************************/
         /* Do not touch this comment. Reserved for future projects. */

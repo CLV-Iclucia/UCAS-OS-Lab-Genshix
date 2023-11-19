@@ -14,7 +14,6 @@ struct TestMultiCoreArg
 
 int main(int argc, char * argv[])
 {
-#ifndef S_CORE
     if (argc < 2)
     {
         printf("Error: argc = %d\n", argc);
@@ -37,7 +36,6 @@ int main(int argc, char * argv[])
     }
     printf("Done \n\r");
     *args->result = result;
-#endif
 
     sys_exit();
 }

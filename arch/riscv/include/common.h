@@ -86,7 +86,6 @@ uint64_t read_fdt(enum FDT_TYPE type);
 void qemu_logging(char *str);
 /************************************************************/
 
-
 // send Inter-Processor Interrupts(IPI)
 // use bios send ipi function
 void send_ipi(const unsigned long *hart_mask);

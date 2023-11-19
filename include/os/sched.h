@@ -31,6 +31,7 @@
 #ifndef INCLUDE_SCHEDULER_H_
 #define INCLUDE_SCHEDULER_H_
 
+#include <os/smp.h>
 #include <os/list.h>
 #include <os/lock.h>
 #include <os/mm.h>
@@ -40,12 +41,14 @@
 #define NUM_MAX_TASK 16
 #define NAME_MAXLEN 16
 #define NUM_MAX_THREADS NUM_MAX_TASK * 4
-/* used to save register infomation */
+
+// constraints for a valid trapframe:
+// 1. sepc, ra and sp must be aligned and within valid ranges
+// 2. 
 typedef struct regs_context {
   /* Saved main processor registers.*/
   reg_t regs[32];
 
-  /* Saved special registers. */
   reg_t sstatus;
   reg_t sepc;
   reg_t sbadaddr;
@@ -131,6 +134,10 @@ static inline const char *task_status_str(task_status_t status) {
 
 /* Process Control Block */
 typedef struct pcb {
+  spin_lock_t thread_lock;
+  // constraints for thread lists:
+  // 1. num_threads == list_length(&threads)
+  // 2. threads cannot be broken
   list_node_t threads;
   int num_threads;
   /* process id */
@@ -141,24 +148,23 @@ typedef struct pcb {
 /* Thread Control Block */
 typedef struct tcb {
   regs_context_t *trapframe;
-  /* register context */
-  // NOTE: this order must be preserved, which is defined in regs.h!!
   reg_t kernel_sp;
   reg_t user_sp;
-  /* previous, next pointer in ready_queue */
-  list_node_t list;
+  spin_lock_t lock;
+
+  // constraints for the two lists: cannot be broken
+  list_node_t list; 
   list_node_t thread_list;
-  /* BLOCK | READY | RUNNING */
+  
   task_status_t status;
+  // constraints: the tids of all threads in the same process must be unique
   int tid;
-  /* cursor position */
   int cursor_x;
   int cursor_y;
-  int sched_cnt;
-  /* time(seconds) to wake up sleeping PCB */
   uint64_t wakeup_time;
   switchto_context_t *ctx;
   uint64_t strace_bitmask; // what syscalls to trace?
+  // constraints: lock_bitmasks cannot overlap
   uint64_t lock_bitmask;   // locks held by this thread
   pcb_t *pcb;              // the process this thread belongs to
 } tcb_t;
@@ -166,58 +172,69 @@ typedef struct tcb {
 typedef uint64_t thread_t;
 
 #define offsetof(type, member) ((size_t)(&((type *)0)->member))
-#define HOLD_LOCK(thread, idx) ((thread)->lock_bitmask & LOCK_MASK(idx))
-// given a pointer to a list_node_t, get the pcb_t that contains it
+#define HOLD_LOCK(thread, idx) ((thread)->lock_bitmask & LOCK_MASK(idx)) // must be called with lock held
+
 static inline tcb_t *list_tcb(list_node_t *ptr) {
   return (tcb_t *)((char *)ptr - offsetof(tcb_t, list));
 }
 static inline tcb_t *list_thread(list_node_t *ptr) {
   return (tcb_t *)((char *)ptr - offsetof(tcb_t, thread_list));
 }
-/* ready queue to run */
+
+// constraints:
+// 1. the ready_queue cannot be broken
+// 2. the ready_queue cannot overlap with the sleep_queue and the block_queues of all locks
 extern list_head ready_queue;
+extern spin_lock_t ready_queue_lock;
 
-/* sleep queue to be blocked in */
-extern list_head sleep_queue;
-
-/* current running task PCB */
-extern tcb_t *volatile current_running;
-extern tcb_t *volatile next_running;
-extern pid_t process_id;
+extern tcb_t sched_tcb[NR_CPUS];
+extern pcb_t sched_pcb[NR_CPUS];
+extern switchto_context_t sched_ctx[NR_CPUS];
 
 extern pcb_t pcb[NUM_MAX_TASK];
 extern tcb_t tcb[NUM_MAX_TASK * 4];
-extern tcb_t sched_tcb;
-extern pcb_t sched_pcb;
 extern const ptr_t sched_stack;
 
 extern void switch_to(switchto_context_t *prev, switchto_context_t *next);
-// a inline func myproc to get the current_running
-static inline tcb_t *volatile mythread() { return current_running; }
+// a inline func mythread to get the current_running
+static inline tcb_t *volatile mythread() { return mycpu()->current_running; }
 void init_pool();
 void do_scheduler(void);
 void do_sleep(void);
 void do_yield(void);
-void do_block(list_node_t *, list_head *queue);
+void do_block(list_node_t *, list_head *queue, spin_lock_t *queue_lock);
 void do_unblock(list_node_t *);
 tcb_t *alloc_tcb();
 pcb_t *alloc_pcb();
 tcb_t *new_tcb(pcb_t *p, ptr_t entry);
 pcb_t *new_pcb(const char *name, ptr_t entry);
 
-static inline void update_next() 
-{
-  if (current_running->list.next == &ready_queue)
-    next_running = list_tcb(ready_queue.next);
-  else
-    next_running = list_tcb(current_running->list.next);
-}
-
 extern int free_tcb(tcb_t *t);
 
 static inline tcb_t* main_thread(pcb_t *p) 
 {
   return list_thread(p->threads.next);
+}
+
+// must be called with t->lock held, but will exit with NO LOCK
+// what sched do: update queue, current cpu and switch context
+// NOTE: the update of the status of tcb should be done before calling this
+static inline void sched(tcb_t *t) 
+{
+  assert(spin_lock_holding(&t->lock));
+  switchto_context_t *current_ctx = t->ctx;
+  cpu_t *c = mycpu();
+  c->current_running = sched_tcb + c->id;
+  // we only put new nodes at the tail of the ready_queue
+  // and if the thread is blocked, it should lie in other queues so we do nothing
+  if (t->status != TASK_BLOCKED) {
+    spin_lock_acquire(&ready_queue_lock);
+    LIST_INSERT_TAIL(&ready_queue, &t->list);
+    spin_lock_release(&ready_queue_lock);
+  }
+  spin_lock_release(&t->lock);
+  switch_to(current_ctx, c->sched_ctx);
+  assert(holding_no_spin_lock());
 }
 void insert_tcb(list_head *queue, tcb_t *tcb);
 void dump_all_threads();
@@ -226,7 +243,6 @@ void dump_pcb(pcb_t *p);
 void do_thread_create(void);
 void do_thread_exit(void);
 void do_thread_yield(void);
-void do_sched_times(void);
 /************************************************************/
 /* Do not touch this comment. Reserved for future projects. */
 /* TODO [P3-TASK1] exec exit kill waitpid ps*/

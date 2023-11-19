@@ -44,6 +44,11 @@ static inline void w_stvec(long long x)
   asm volatile("csrw stvec, %0" : : "r" (x));
 }
 
+static inline void w_sip(long long x)
+{
+  asm volatile("csrw sip, %0" : : "r" (x));
+}
+
 static inline void set_supervisor_mode()
 {
   long long x = r_sstatus();
