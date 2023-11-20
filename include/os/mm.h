@@ -46,5 +46,6 @@ extern ptr_t allocKernelPage(int numPage);
 extern ptr_t allocUserPage(int numPage);
 extern void freeKernelPage(ptr_t addr);
 extern void freeUserPage(ptr_t addr);
+extern void freeUserPages(ptr_t addr, int numPage);
 
 #endif /* MM_H */

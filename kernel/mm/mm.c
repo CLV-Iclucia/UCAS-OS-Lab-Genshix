@@ -1,3 +1,4 @@
+#include "type.h"
 #include <os/mm.h>
 #include <os/sched.h>
 #include <os/lock.h>
@@ -74,5 +75,15 @@ void freeUserPage(ptr_t addr)
         panic("freeKernelPage: addr must be page aligned");
     spin_lock_acquire(&userMemLock);
     released_user_pages[num_free_user_pages++] = addr;
+    spin_lock_release(&userMemLock);
+}
+
+void freeUserPages(ptr_t addr, int numPage)
+{
+    if (LOWBIT(addr) < PAGE_SIZE)
+        panic("freeKernelPage: addr must be page aligned");
+    spin_lock_acquire(&userMemLock);
+    for (int i = 0; i < numPage; i++)
+        released_user_pages[num_free_user_pages++] = addr + i * PAGE_SIZE;
     spin_lock_release(&userMemLock);
 }

@@ -134,15 +134,17 @@ static inline const char *task_status_str(task_status_t status) {
 
 /* Process Control Block */
 typedef struct pcb {
-  spin_lock_t thread_lock;
+  spin_lock_t lock;
   // constraints for thread lists:
   // 1. num_threads == list_length(&threads)
   // 2. threads cannot be broken
   list_node_t threads;
   int num_threads;
+  uint64_t size;          
+  uint64_t addr;          // read only
   /* process id */
-  pid_t pid;
-  char name[NAME_MAXLEN];
+  pid_t pid;              // read only
+  char name[NAME_MAXLEN]; // read only
 } pcb_t;
 
 /* Thread Control Block */
@@ -155,7 +157,7 @@ typedef struct tcb {
   // constraints for the two lists: cannot be broken
   list_node_t list; 
   list_node_t thread_list;
-  
+  list_node_t* current_queue;
   task_status_t status;
   // constraints: the tids of all threads in the same process must be unique
   int tid;

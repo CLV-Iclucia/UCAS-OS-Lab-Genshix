@@ -16,9 +16,11 @@ clear_loop:
     j clear_loop
 end_loop:
     call main
+    // TODO[p3]: call exit
+    
     ld ra, 0(sp)
     addi sp, sp, 8
-    // TODO[p3]: call exit
+    
     ret
     /************************************************************/
 	/* Do not touch this comment. Reserved for future projects. */

@@ -14,7 +14,7 @@ static inline int islower(int ch)
 static inline int isalpha(int ch)
 {
     return isupper(ch) || islower(ch);
-}
+} 
 
 static inline int isdigit(int ch)
 {
@@ -38,4 +38,8 @@ static inline int isspace(int ch)
            ch == '\v' || ch == '\f' || ch == '\r';
 }
 
+static inline int isprint(int ch)
+{
+    return ' ' <= ch && ch <= '~';
+}
 #endif

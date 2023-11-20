@@ -32,14 +32,40 @@
 #include <ctype.h>
 
 #define SHELL_BEGIN 20
+#define BUFFER_SIZE 256
 
 const char* prompt = "> root@UCAS_OS: ";
+char buffer[BUFFER_SIZE];
+int cur = 0;
 
+void clear_buffer() {
+    memset(buffer, 0, BUFFER_SIZE);
+    cur = 0;
+}
+
+char* read_input(int* len) {
+    clear_buffer();
+    printf("%s", prompt);
+
+    char c;
+    do {
+        c = sys_getchar();
+        if (isprint(c)) {
+            printf("%c", c);
+            buffer[cur++] = c;
+        } else if (c == '\b' || c == 127) {
+            if (cur > 0) cur--;
+        }
+    } while (c != '\n');
+    buffer[cur] = '\0';
+    *len = cur;
+    return buffer;
+}
 int main(void)
 {
     sys_move_cursor(0, SHELL_BEGIN);
-    printf("------------------- COMMAND -------------------\n");
-
+    printf("------------------- YoRHa -------------------\n");
+    printf("             Glory for mankind!              \n");
     while (1)
     {
         // TODO [P3-task1]: call syscall to read UART port
@@ -49,7 +75,9 @@ int main(void)
 
         // TODO [P3-task1]: ps, exec, kill, clear    
         printf("%s", prompt);
-
+        int len = 0;
+        char* cmd = read_input(&len);
+        
         /************************************************************/
         /* Do not touch this comment. Reserved for future projects. */
         /************************************************************/    

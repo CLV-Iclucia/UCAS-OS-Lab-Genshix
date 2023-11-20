@@ -1,4 +1,4 @@
-#include "os/mm.h"
+#include <os/mm.h>
 #include <os/task.h>
 #include <os/string.h>
 #include <os/kernel.h>
@@ -13,12 +13,12 @@ uint64_t load_task_img(int taskid)
     if (taskid < 1 || taskid > tasknum) {
         init_panic("taskid out of range!\n\r");
     }
-    uint32_t task_start = tasks[taskid - 1].offset;
-    uint32_t task_end = taskid == tasknum ? name_region_offset : tasks[taskid].offset;
-    uint32_t size = task_end - task_start;
-    uint32_t page_num = size / PAGE_SIZE + 1;
-    uint32_t entry_point = 0x52000000 + (taskid - 1) * 0x10000;
-    uint32_t pa = entry_point, p = task_start;
+    uint64_t task_start = tasks[taskid - 1].offset;
+    uint64_t task_end = taskid == tasknum ? name_region_offset : tasks[taskid].offset;
+    uint64_t size = task_end - task_start;
+    uint32_t page_num = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+    uint64_t entry_point = (uint64_t)allocUserPage(page_num);
+    uint64_t pa = entry_point, p = task_start;
     for (; p < task_end; p++, pa++)
         *(char*)pa = getc_img(p);
     return entry_point;

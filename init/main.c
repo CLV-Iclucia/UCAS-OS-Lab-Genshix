@@ -25,6 +25,7 @@
 #include <assert.h>
 #include <csr.h>
 #include <screen.h>
+#include <io.h>
 
 #define version_buf 50
 #define META_OFFSET_ADDR 0x502001f4
@@ -147,13 +148,7 @@ static char getchar()
     while (1) {
         int c = bios_getchar();
         if (c != -1) { 
-            if (c >= 256) panic("Invalid getchar input encountered!\n\r");
-            bios_putchar(c);
-            if (c == '\r') bios_putchar('\n');
-     //       if (c == '\b') {
-      //          bios_putchar(' ');
-       //         bios_putstr("\033[1C");
-        //    }
+            if (c == '\r') c = '\n'; 
             return (char)c;
         }
     }
@@ -212,6 +207,14 @@ static void init_syscall(void)
     register_syscall(SYSCALL_THREAD_CREATE, thread_create);
     register_syscall(SYSCALL_THREAD_EXIT, thread_exit);
     register_syscall(SYSCALL_THREAD_YIELD, thread_yield);
+    register_syscall(SYSCALL_GETPID, getpid);
+    register_syscall(SYSCALL_KILL, kill);
+    register_syscall(SYSCALL_SHOW_TASK, process_show);
+    register_syscall(SYSCALL_EXEC, exec);
+    register_syscall(SYSCALL_EXIT, exit);
+    register_syscall(SYSCALL_WAITPID, waitpid);
+    register_syscall(SYSCALL_READCH, getchar);
+
 }
 
 /************************************************************/
