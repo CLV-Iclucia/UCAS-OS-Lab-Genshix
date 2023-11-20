@@ -98,20 +98,28 @@ static void push_tcb(tcb_t *t) {
   spin_lock_release(&tcb_pool_lock);
 }
 
-// must be called with the lock of thread queue of pcb held
+static void push_pcb(pcb_t *p) {
+  spin_lock_acquire(&pcb_pool_lock);
+  pcb_pool_queue_tail = (pcb_pool_queue_tail + 1) % NUM_MAX_TASK;
+  pcb_pool_queue[pcb_pool_queue_tail] = p - pcb;
+  spin_lock_release(&pcb_pool_lock);
+}
+
+// must be called with the lock of pcb held
 // this function will return with the lock of the new tcb HELD!
 // 1. alloc new tcb and acquire the lock of the new tcb
 // 1. release the lock of the queue of pcb
 // 2. acquire the lock of the ready queue
 // 3. release the lock of the ready queue
+// note: this will not put the tcb to running, and will not set the args!
 tcb_t *new_tcb(pcb_t *p, ptr_t entry) {
   assert(spin_lock_holding(&p->lock));
   tcb_t *t = alloc_tcb();
   if (t == NULL)
     return NULL;
   spin_lock_init(&t->lock);
+  spin_lock_acquire(&(t->lock));
   t->ctx = swtch_ctx + (t - tcb);
-  t->status = TASK_READY;
   t->tid = p->num_threads++;
   t->lock_bitmask = 0;
   t->wakeup_time = 0;
@@ -127,18 +135,12 @@ tcb_t *new_tcb(pcb_t *p, ptr_t entry) {
   t->pcb = p;
   t->list.next = t->list.prev = &(t->list);
   t->thread_list.next = t->thread_list.prev = &(t->thread_list);
-  LIST_INSERT_TAIL(&(p->threads), &(t->thread_list));
-  spin_lock_release(&(p->lock));
-  spin_lock_acquire(&(t->lock));
-  t->status = TASK_READY;
-  spin_lock_acquire(&ready_queue_lock);
-  LIST_INSERT_TAIL(&ready_queue, &(t->list));
-  t->current_queue = &ready_queue;
-  spin_lock_release(&ready_queue_lock);
+  LIST_INSERT_TAIL(&(p->threads), &(t->thread_list));  
   return t;
 }
 
 // no need to hold lock, this can be done atomically
+// but will exit with the lock of the pcb HELD!
 pcb_t *new_pcb(const char *name, ptr_t entry) {
   pcb_t *p = alloc_pcb();
   if (p == NULL) {
@@ -146,10 +148,10 @@ pcb_t *new_pcb(const char *name, ptr_t entry) {
     return NULL;
   }
   spin_lock_init(&(p->lock));
+  spin_lock_acquire(&p->lock);
   p->pid = p - pcb + 1;
   strcpy(p->name, name);
   p->num_threads = 0;
-  spin_lock_acquire(&p->lock);
   p->threads.next = p->threads.prev = &(p->threads);
   tcb_t *nt = new_tcb(p, entry);
   if (nt == NULL) {
@@ -164,22 +166,48 @@ void insert_tcb(list_head *queue, tcb_t *tcb) {
 }
 
 // must be called with the lock for t AND the lock for thread queue held
-// the lock for the queue will be released in this function
-// 1. release the lock for the queue
 int free_tcb(tcb_t *t) {
   pcb_t *p = t->pcb;
+  assert(spin_lock_holding(&p->lock));
+  assert(t->current_queue == NULL);
   assert_msg(t != &sched_tcb[mycpuid()], "freeing the scheduler thread.");
   assert_msg(p->num_threads > 1, "freeing the last thread of the process.");
   LIST_REMOVE(&(t->thread_list));
   p->num_threads--;
-  spin_lock_release(&p->lock);
-  // TODO:
+  spin_lock_acquire(&ready_queue_lock);
   LIST_REMOVE(&(t->list));
+  spin_lock_release(&ready_queue_lock);
   freeKernelPage((ptr_t)t->trapframe);
   freeKernelPage((ptr_t)t->kernel_sp);
   freeUserPage((ptr_t)t->user_sp);
+  spin_lock_release(&t->lock);
   push_tcb(t);
   return 0;
+}
+
+
+// must be called with the lock of p held
+int kill_pcb(pcb_t* p) 
+{
+  assert(spin_lock_holding(&p->lock));
+  // run through all the threads
+  list_node_t* node = p->threads.next;
+  while (node != &(p->threads)) {
+    tcb_t* t = list_tcb(node);
+    spin_lock_acquire(&t->lock);
+    t->status = TASK_EXITED;
+    spin_lock_release(&t->lock);
+    node = node->next;
+  }
+  return 0;
+}
+
+void free_pcb(pcb_t* p)
+{
+  assert(spin_lock_holding(&p->lock));
+  assert(LIST_EMPTY(p->threads) && p->num_threads == 0);
+  spin_lock_release(&p->lock);
+  push_pcb(p);
 }
 
 // hold no locks when entering this loop
@@ -192,8 +220,16 @@ void do_scheduler(void) {
     spin_lock_acquire(&ready_queue_lock);
     if (ready_queue.next != &ready_queue) {
       t = list_tcb(ready_queue.next);
+      pcb_t* p = t->pcb;
+      spin_lock_acquire(&p->lock);
       spin_lock_acquire(&t->lock);
       LIST_REMOVE(&(t->list)); 
+      if (t->status == TASK_EXITED) {
+        free_tcb(t);
+        if (p->num_threads == 0)
+          free_pcb(p);
+        continue;
+      }
       t->status = TASK_RUNNING;
       spin_lock_release(&t->lock);
     }
@@ -299,7 +335,7 @@ void do_thread_create() {
 void do_thread_yield(void) {
   tcb_t *t = mythread();
   do_yield();
-  t->trapframe->regs[10] = 0;
+  t->trapframe->a0() = 0;
 }
 
 void do_thread_exit() {
@@ -314,35 +350,42 @@ void do_thread_exit() {
     *(int *)retval = 0;
 }
 
-pid_t do_exec(char *name, int argc, char *argv[]) {
+void do_exec(void) {
+  tcb_t *t = mythread();
+  char* name = (char*)argraw(0);
+  int argc;
+  if (argint(1, &argc) == -1) {
+    t->trapframe->a0() = -1;
+    return ;
+  }
+  char** argv = (char*)argraw(2);
   pcb_t *p = new_pcb(name, (ptr_t)load_task_by_name(name));
-  if (p == NULL)
-    return -1;
-  tcb_t *t = list_tcb(p->threads.next);
-  t->trapframe->a0() = 0;
-  return p->pid;
+  char* prog = (char*)argraw;
+  if (p == NULL) {
+    t->trapframe->a0() = -1;
+    return ;
+  }
+  t->trapframe->a0() = p->pid;
 }
 
 void do_exit(void) {
-  tcb_t* t = mythread();
-  pcb_t* p = t->pcb;  
-  // we only free the main thread, and assume that t is the main thread
-  spin_lock_acquire(&t->lock);
+  pcb_t* p = myproc();  
   spin_lock_acquire(&p->lock);
-  int page_num = (p->size + PAGE_SIZE - 1) / PAGE_SIZE;
-  freeUserPages((ptr_t)p->addr, page_num);
-  t->status = TASK_EXITED;
-
+  kill_pcb(p);
   spin_lock_release(&p->lock);
-  spin_lock_release(&t->lock);
-
 }
 
-int do_kill(pid_t pid) {
-
+void do_kill(void) {
+  pid_t pid = argraw(0);
+  pcb_t* p = pcb + pid - 1;
+  spin_lock_acquire(&p->lock);
+  kill_pcb(p);
+  spin_lock_release(&p->lock);
 }
 
-int do_waitpid(pid_t pid) {
+void do_waitpid(void) {
+  tcb_t* t = mythread();
+  int pid = argraw(0);
 
 }
 
@@ -354,7 +397,7 @@ void do_process_show() {
   }
 }
 
-pid_t do_getpid() {
+void do_getpid() {
   tcb_t* t = mythread();
   t->trapframe->a0() = t->pcb->pid;
 }

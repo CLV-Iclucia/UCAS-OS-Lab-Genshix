@@ -27,10 +27,8 @@ void interrupt_helper(regs_context_t *regs, uint64_t stval, uint64_t scause)
   c->timer_needs_reset = false;
   tcb_t* t = c->current_running;
   spin_lock_acquire(&t->lock);
-  if (mythread()->status == TASK_EXITED) {
-    // TODO: what should we do?
-  }
-  spin_lock_release(&t->lock);
+  if (t->status == TASK_EXITED)
+    sched(t);
   if (is_supervisor_mode()) {
     log(INTR, "Interrupt: scause: %lx, stval: %lx in supervisor mode", scause, stval);
     if (is_interrupt(scause)) {

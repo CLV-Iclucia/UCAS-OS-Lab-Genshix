@@ -44,7 +44,7 @@ void check_sleeping(void)
     list_node_t* t_next = t->next;
     while (t != &(c->sleep_queue)) {
         tcb_t* tcb = list_tcb(t);
-        if (tcb->wakeup_time <= get_ticks())
+        if (tcb->wakeup_time <= get_ticks() || tcb->status == TASK_EXITED)
             do_unblock(t);
         t = t_next;
         t_next = t->next;

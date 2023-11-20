@@ -1,3 +1,4 @@
+#include "os/list.h"
 #include <os/smp.h>
 #include <debugs.h>
 #include <asm.h>
@@ -178,6 +179,11 @@ static void init_pcb(void)
         uint32_t load_addr = (uint32_t)load_task_by_name(init_tasks[i]);
         pcb_t* p = new_pcb(init_tasks[i], load_addr);
         if (p == NULL) panic("new_pcb failed!\n\r");
+        tcb_t* t = main_thread(p);
+        spin_lock_acquire(&t->lock);
+        prepare_sched(t);
+        spin_lock_release(&t->lock);
+        spin_lock_release(&p->lock);
     }
 }
 

@@ -132,6 +132,11 @@ static inline const char *task_status_str(task_status_t status) {
   }
 }
 
+typedef enum {
+  PROC_ACTIVATE,
+  PROC_INACTIVATE,
+} proc_status_t;
+
 /* Process Control Block */
 typedef struct pcb {
   spin_lock_t lock;
@@ -141,6 +146,9 @@ typedef struct pcb {
   list_node_t threads;
   int num_threads;
   uint64_t size;          
+  proc_status_t status;
+  spin_lock_t wait_lock;
+  list_node_t wait_queue;
   uint64_t addr;          // read only
   /* process id */
   pid_t pid;              // read only
@@ -200,6 +208,7 @@ extern const ptr_t sched_stack;
 extern void switch_to(switchto_context_t *prev, switchto_context_t *next);
 // a inline func mythread to get the current_running
 static inline tcb_t *volatile mythread() { return mycpu()->current_running; }
+static inline pcb_t *volatile myproc() { return mythread()->pcb; }
 void init_pool();
 void do_scheduler(void);
 void do_sleep(void);
@@ -215,6 +224,7 @@ extern int free_tcb(tcb_t *t);
 
 static inline tcb_t* main_thread(pcb_t *p) 
 {
+  assert(spin_lock_holding(&p->lock));
   return list_thread(p->threads.next);
 }
 
@@ -238,6 +248,18 @@ static inline void sched(tcb_t *t)
   switch_to(current_ctx, c->sched_ctx);
   assert(holding_no_spin_lock());
 }
+
+// must hold the lock of t
+static inline void prepare_sched(tcb_t* t) {
+  assert(spin_lock_holding(&t->lock));
+  t->status = TASK_READY;
+  assert(t->current_queue == NULL);
+  spin_lock_acquire(&ready_queue_lock);
+  LIST_INSERT_TAIL(&ready_queue, &t->list);
+  t->current_queue = &ready_queue;
+  spin_lock_release(&ready_queue_lock);
+}
+
 void insert_tcb(list_head *queue, tcb_t *tcb);
 void dump_all_threads();
 void dump_context(switchto_context_t *ctx);
@@ -248,12 +270,12 @@ void do_thread_yield(void);
 /************************************************************/
 /* Do not touch this comment. Reserved for future projects. */
 /* TODO [P3-TASK1] exec exit kill waitpid ps*/
-extern pid_t do_exec(char *name, int argc, char *argv[]);
+extern void do_exec(void);
 extern void do_exit(void);
-extern int do_kill(pid_t pid);
-extern int do_waitpid(pid_t pid);
-extern void do_process_show();
-extern pid_t do_getpid();
+extern void do_kill(void);
+extern void do_waitpid(void);
+extern void do_process_show(void);
+extern void do_getpid(void);
 
 /************************************************************/
 
