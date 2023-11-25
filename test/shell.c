@@ -31,11 +31,13 @@
 #include <string.h>
 #include <stddef.h>
 #include <ctype.h>
-
+#include <stdlib.h>
 #define SHELL_BEGIN 20
+#define SCREEN_WIDTH 80
+#define SCREEN_HEIGHT 20
 #define BUFFER_SIZE 256
 
-const char* prompt = "> root@UCAS_OS: ";
+const char* prompt = "> root@Genshix: ";
 char buffer[BUFFER_SIZE];
 int cur = 0;
 
@@ -44,14 +46,34 @@ void clear_buffer() {
     cur = 0;
 }
 
+int input_offset = 0;
+
+static inline char getchar() {
+    char c = sys_getchar();
+    if (c == '\b' || c == 127) {
+        if (cur > 0) buffer[cur--] = ' ';
+        sys_move_cursor_x(input_offset);
+        printf("%s", buffer);
+    } else if (isprint(c)) {
+        buffer[cur++] = c;
+        buffer[cur] = '\0';
+        sys_move_cursor_x(input_offset);
+        printf("%s", buffer);
+    }
+    return c;
+}
+
+void screen_clear() {
+    sys_clear_region(0, SHELL_BEGIN + 1, SCREEN_WIDTH, SCREEN_HEIGHT);
+}
+
 int read_input(char* buf) {
     clear_buffer();
-    printf("%s", prompt);
 
     char c;
     cur = 0;
     do {
-        c = sys_getchar();
+        c = getchar();
         if (isprint(c)) {
             printf("%c", c);
             buf[cur++] = c;
@@ -113,78 +135,14 @@ cmd_t* parse_cmd(char* cmd, int len) {
     return new_cmd(argc, args);
 }
 
-long atol(const char *str)
-{
-    long ret = 0;
-    int negative = 0;
-    int base = 10;
-
-
-    // Check if str pointer is NULL
-    if (NULL == str) {
-        return 0;
-    }
-
-    // Skip blanks until reaching the first non-blank char
-    while (isspace(*str)) {
-        ;
-    }
-    if ('+' == *str) {
-        negative = 0;
-        ++str;
-    }
-    else if ('-' == *str) {
-        negative = 1;
-        ++str;
-    }
-    else if (isdigit(*str)) {
-        negative = 0;
-    }
-    else {
-        return 0;
-    }
-
-    // 0x or 0X for hexadecimal
-    if ((str[0] == '0' && str[1] == 'x') ||
-        (str[0] == '0' && str[1] == 'X')) {
-        base = 16;
-        ++str;
-        ++str;
-    }
-
-    // Start converting ...
-    while (*str != '\0') {
-        if (isdigit(*str)) {
-            ret = ret * base + (*str - '0');
-        } else if (base == 16) {
-            if ('a' <= *str && *str <= 'f'){
-                ret = ret * base + (*str - 'a' + 10);
-            } else if ('A' <= *str && *str <= 'F') {
-                ret = ret * base + (*str - 'A' + 10);
-            } else {
-                return 0;
-            }            
-        } else {
-            return 0;
-        }
-        ++str;
-    }
-
-    return negative ? -ret : ret;
-}
-
-int atoi(const char *str)
-{
-    return (int)atol(str);
-}
-
 int main(void)
 {
     sys_move_cursor(0, SHELL_BEGIN);
     for (int i = 0; i < CMD_POOL_SIZE; i++)
         cmd_queue[i] = i;
+    screen_clear();
+    input_offset = strlen(prompt);
     printf("------------------- YoRHa -------------------\n");
-    printf("             Glory for mankind!              \n");
     while (1)
     {
         // TODO [P3-task1]: call syscall to read UART port
@@ -194,6 +152,7 @@ int main(void)
 
         // TODO [P3-task1]: ps, exec, kill, clear    
         printf("%s", prompt);
+        clear_buffer();
         int len = read_input(buffer);
         cmd_t* cmd = parse_cmd(buffer, len); 
         if (cmd->argc == 0) {
@@ -219,6 +178,11 @@ int main(void)
             }
             cmd->argv++; // now points to programme
             pid_t pid = sys_exec(cmd->argv[0], cmd->argc, cmd->argv);
+            if (pid == -1) {
+                printf("exec failed\n");
+                free_cmd(cmd);
+                continue;
+            }
             if (!run_in_bg)
                 sys_waitpid(pid);
         } else if (strcmp(cmd->argv[0], "kill") == 0) {
@@ -229,10 +193,11 @@ int main(void)
             pid_t pid = atoi(cmd->argv[1]);
             sys_kill(pid);
         } else if (strcmp(cmd->argv[0], "clear") == 0) {
-            
+            screen_clear();
         } else {
             printf("Unknown command: %s\n", cmd->argv[0]);
         }
+        free_cmd(cmd);
         /************************************************************/
         /* Do not touch this comment. Reserved for future projects. */
         /************************************************************/    

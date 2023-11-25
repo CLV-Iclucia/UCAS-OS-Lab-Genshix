@@ -149,7 +149,7 @@ typedef struct pcb {
   proc_status_t status;
   spin_lock_t wait_lock;
   list_node_t wait_queue;
-  uint64_t addr;          // read only
+  ptr_t addr;             // read only
   /* process id */
   pid_t pid;              // read only
   char name[NAME_MAXLEN]; // read only
@@ -191,6 +191,7 @@ static inline tcb_t *list_thread(list_node_t *ptr) {
   return (tcb_t *)((char *)ptr - offsetof(tcb_t, thread_list));
 }
 
+
 // constraints:
 // 1. the ready_queue cannot be broken
 // 2. the ready_queue cannot overlap with the sleep_queue and the block_queues of all locks
@@ -209,6 +210,11 @@ extern void switch_to(switchto_context_t *prev, switchto_context_t *next);
 // a inline func mythread to get the current_running
 static inline tcb_t *volatile mythread() { return mycpu()->current_running; }
 static inline pcb_t *volatile myproc() { return mythread()->pcb; }
+static inline bool running_on_scheduler() 
+{
+  int cpuid = mycpuid();
+  return cpus[cpuid].current_running == &sched_tcb[cpuid];
+}
 void init_pool();
 void do_scheduler(void);
 void do_sleep(void);
@@ -258,6 +264,31 @@ static inline void prepare_sched(tcb_t* t) {
   LIST_INSERT_TAIL(&ready_queue, &t->list);
   t->current_queue = &ready_queue;
   spin_lock_release(&ready_queue_lock);
+}
+
+// atomically takes and removes the head of the queue, NULL if empty
+static inline tcb_t* ready_queue_pop() {
+  tcb_t* t = NULL;
+  spin_lock_acquire(&ready_queue_lock);
+  list_node_t* head = LIST_FIRST(ready_queue);
+  if (head != &ready_queue)
+    t = list_tcb(head);
+  LIST_REMOVE(head);
+  spin_lock_release(&ready_queue_lock);
+  return t;
+}
+
+// atomically insert a tcb into ready queue
+static inline void ready_queue_insert(tcb_t* t) {
+  spin_lock_acquire(&ready_queue_lock);
+  LIST_INSERT_TAIL(&ready_queue, &t->list);
+  t->current_queue = &ready_queue;
+  spin_lock_release(&ready_queue_lock);
+}
+
+static inline pcb_t* get_pcb(int pid) {
+  assert(pid != -1);
+  return pcb + pid - 1;
 }
 
 void insert_tcb(list_head *queue, tcb_t *tcb);

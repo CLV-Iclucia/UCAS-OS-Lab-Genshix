@@ -238,3 +238,27 @@ int printf(const char *fmt, ...)
 
     return ret;
 }
+
+int vsprintf(char* str, const char *fmt, va_list _va)
+{
+    va_list va;
+    va_copy(va, _va);
+
+    int ret;
+    ret = mini_vsnprintf(str, 256, fmt, va);
+    str[ret] = '\0';
+    
+    return ret;
+}
+
+int sprintf(char* str, const char* fmt, ...)
+{
+    int ret = 0;
+    va_list va;
+
+    va_start(va, fmt);
+    ret = vprintf(fmt, va);
+    va_end(va);
+
+    return ret;
+}

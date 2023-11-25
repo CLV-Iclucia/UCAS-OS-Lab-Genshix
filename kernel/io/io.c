@@ -1,7 +1,6 @@
-#include <io.h>
+#include <os/io.h>
 #include <common.h>
 #include <os/sched.h>
-
 
 void do_getchar() {
     int c = -1;

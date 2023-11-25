@@ -20,6 +20,7 @@ pcb_t pcb[NUM_MAX_TASK];
 tcb_t tcb[NUM_MAX_THREADS];
 switchto_context_t swtch_ctx[NUM_MAX_THREADS];
 switchto_context_t sched_ctx[NR_CPUS];
+
 tcb_t sched_tcb[NR_CPUS] = {
     {
         .status = TASK_READY,
@@ -30,7 +31,8 @@ tcb_t sched_tcb[NR_CPUS] = {
         .cursor_y = 0,
         .lock = {
           .status = UNLOCKED,
-        }
+        },
+        .pcb = &sched_pcb[0],
     },
     {
         .status = TASK_READY,
@@ -40,6 +42,34 @@ tcb_t sched_tcb[NR_CPUS] = {
         .cursor_x = 0,
         .cursor_y = 1,
         .lock = {
+          .cpuid = -1,
+          .status = UNLOCKED,
+        },
+        .pcb = &sched_pcb[1],
+    }};
+pcb_t sched_pcb[NR_CPUS] = {
+    {
+        .status = PROC_ACTIVATE,
+        .pid = 0,
+        .num_threads = 1,
+        .threads = {
+            .next = &(sched_tcb[0].thread_list),
+            .prev = &(sched_tcb[0].thread_list),
+        },
+        .lock = {
+          .status = UNLOCKED,
+        },
+    },
+    {
+        .status = PROC_ACTIVATE,
+        .pid = 0,
+        .num_threads = 1,
+        .threads = {
+            .next = &(sched_tcb[1].thread_list),
+            .prev = &(sched_tcb[1].thread_list),
+        },
+        .lock = {
+          .cpuid = -1,
           .status = UNLOCKED,
         }
     }};
@@ -150,6 +180,7 @@ pcb_t *new_pcb(const char *name, ptr_t entry) {
   spin_lock_init(&(p->lock));
   spin_lock_acquire(&p->lock);
   p->pid = p - pcb + 1;
+  p->status = PROC_ACTIVATE;
   strcpy(p->name, name);
   p->num_threads = 0;
   p->threads.next = p->threads.prev = &(p->threads);
@@ -166,25 +197,23 @@ void insert_tcb(list_head *queue, tcb_t *tcb) {
 }
 
 // must be called with the lock for t AND the lock for thread queue held
+// and can only be called when the cpu is running on the scheduler
 int free_tcb(tcb_t *t) {
+  assert(running_on_scheduler());
   pcb_t *p = t->pcb;
   assert(spin_lock_holding(&p->lock));
   assert(t->current_queue == NULL);
   assert_msg(t != &sched_tcb[mycpuid()], "freeing the scheduler thread.");
-  assert_msg(p->num_threads > 1, "freeing the last thread of the process.");
   LIST_REMOVE(&(t->thread_list));
   p->num_threads--;
-  spin_lock_acquire(&ready_queue_lock);
-  LIST_REMOVE(&(t->list));
-  spin_lock_release(&ready_queue_lock);
   freeKernelPage((ptr_t)t->trapframe);
   freeKernelPage((ptr_t)t->kernel_sp);
   freeUserPage((ptr_t)t->user_sp);
   spin_lock_release(&t->lock);
+  // it is fine here, since at this time the status is already TASK_EXITED
   push_tcb(t);
   return 0;
 }
-
 
 // must be called with the lock of p held
 int kill_pcb(pcb_t* p) 
@@ -192,6 +221,7 @@ int kill_pcb(pcb_t* p)
   assert(spin_lock_holding(&p->lock));
   // run through all the threads
   list_node_t* node = p->threads.next;
+  p->status = PROC_INACTIVATE;
   while (node != &(p->threads)) {
     tcb_t* t = list_tcb(node);
     spin_lock_acquire(&t->lock);
@@ -199,6 +229,20 @@ int kill_pcb(pcb_t* p)
     spin_lock_release(&t->lock);
     node = node->next;
   }
+  spin_lock_acquire(&p->wait_lock);
+  node = LIST_FIRST(p->wait_queue);
+  while (node != &(p->wait_queue)) {
+    do_unblock(node);
+    node = node->next;
+  }
+  spin_lock_release(&p->wait_lock);
+  return 0;
+}
+
+int kill_tcb(tcb_t* t)
+{
+  assert(spin_lock_holding(&t->lock));
+  t->status = TASK_EXITED;
   return 0;
 }
 
@@ -206,39 +250,37 @@ void free_pcb(pcb_t* p)
 {
   assert(spin_lock_holding(&p->lock));
   assert(LIST_EMPTY(p->threads) && p->num_threads == 0);
+  freeUserPages(p->addr, p->size);
   spin_lock_release(&p->lock);
   push_pcb(p);
 }
 
 // hold no locks when entering this loop
+// in this function, we also free exited tcb and pcb (if all of its tcb have exited)
+// because the scheduler run on another kernel stack 
+// we can free the kernel stack of tcb safely
 void do_scheduler(void) {
   while (1) {
     assert(holding_no_spin_lock());
     cpu_t *c = mycpu();
     check_sleeping();
-    tcb_t *t = NULL;
-    spin_lock_acquire(&ready_queue_lock);
-    if (ready_queue.next != &ready_queue) {
-      t = list_tcb(ready_queue.next);
-      pcb_t* p = t->pcb;
-      spin_lock_acquire(&p->lock);
-      spin_lock_acquire(&t->lock);
-      LIST_REMOVE(&(t->list)); 
-      if (t->status == TASK_EXITED) {
-        free_tcb(t);
-        if (p->num_threads == 0)
-          free_pcb(p);
-        continue;
-      }
-      t->status = TASK_RUNNING;
-      spin_lock_release(&t->lock);
-    }
-    spin_lock_release(&ready_queue_lock);
+    tcb_t *t = ready_queue_pop();
     if (t == NULL) continue;
+    pcb_t* p = t->pcb;
+    spin_lock_acquire(&p->lock);
+    spin_lock_acquire(&t->lock);
+    if (t->status == TASK_EXITED) {
+      free_tcb(t);
+      if (p->num_threads == 0)
+        free_pcb(p);
+      continue;
+    }
+    t->status = TASK_RUNNING;
+    spin_lock_release(&t->lock);
+    spin_lock_release(&p->lock);
     c->current_running = t;
     c->timer_needs_reset = true;
     switch_to(c->sched_ctx, t->ctx);
-    // TODO: what should we do?
   }
 }
 
@@ -300,15 +342,16 @@ void do_block(list_node_t *tcb_node, list_head *queue,
 void do_unblock(list_node_t *tcb_node) {
   tcb_t *t = list_tcb(tcb_node);
   spin_lock_acquire(&t->lock);
-  assert(t->status == TASK_BLOCKED);
-  t->status = TASK_READY;
+  assert(t->status == TASK_BLOCKED || t->status == TASK_EXITED);
+  // since killing is not often the case, all the resource recyclings are done in scheduler
+  // here we can still free the tcb (because we are not on its kernel stack)
+  // but it is unneccesary to check it here, we can safely move it to the ready queue
+  if (t->status == TASK_BLOCKED)
+    t->status = TASK_READY;
   log_line(PROC, "process %d (%s), thread %d is unblocked\n", t->pcb->pid,
            t->pcb->name, t->tid);
   LIST_REMOVE(tcb_node);
-  spin_lock_acquire(&ready_queue_lock);
-  LIST_INSERT_TAIL(&ready_queue, tcb_node);
-  t->current_queue = &ready_queue;
-  spin_lock_release(&ready_queue_lock);
+  ready_queue_insert(t);
   spin_lock_release(&t->lock);
 }
 
@@ -325,8 +368,11 @@ void do_thread_create() {
     t->trapframe->a0() = -1;
     return;
   }
+  nt->status = TASK_READY;
+  ready_queue_insert(nt);
   nt->trapframe->a0() = arg_ptr;
   spin_lock_release(&nt->lock);
+  spin_lock_release(&p->lock);
   *(thread_t *)thread_ptr = nt - tcb;
   t->trapframe->a0() = 0;
   return;
@@ -352,20 +398,39 @@ void do_thread_exit() {
 
 void do_exec(void) {
   tcb_t *t = mythread();
-  char* name = (char*)argraw(0);
+  char* prog = (char*)argraw(0);
   int argc;
   if (argint(1, &argc) == -1) {
     t->trapframe->a0() = -1;
     return ;
   }
-  char** argv = (char*)argraw(2);
-  pcb_t *p = new_pcb(name, (ptr_t)load_task_by_name(name));
-  char* prog = (char*)argraw;
-  if (p == NULL) {
+  char** argv = (char**)argraw(2);
+  pcb_t *np = new_pcb(prog, (ptr_t)load_task_by_name(prog));
+  if (np == NULL) {
     t->trapframe->a0() = -1;
     return ;
   }
-  t->trapframe->a0() = p->pid;
+  tcb_t *nt = main_thread(np); 
+  t->trapframe->a0() = np->pid;
+  nt->trapframe->a0() = argc;
+  nt->trapframe->sp() -= (argc + 1) * sizeof(ptr_t);
+  uint64_t sp = nt->trapframe->sp();
+  char** argv_ptr = (char**)sp;
+  for (int i = 0; i < argc; i++) {
+    // put argv on to the stack
+    int len = strlen(argv[i]);
+    nt->trapframe->sp() -= len + 1;
+    strcpy((char*)sp, argv[i]);
+    argv_ptr[i] = (char*)sp;
+  }
+  argv_ptr[argc] = NULL;
+  nt->trapframe->a1() = (uint64_t)argv_ptr;
+  // alignment: align the stack to 16 byte, padding with 0
+  while((sp & 15) != 0) {
+    sp--;
+    *(char*)(sp) = 0;
+  }
+  nt->trapframe->sp() = sp;
 }
 
 void do_exit(void) {
@@ -377,7 +442,7 @@ void do_exit(void) {
 
 void do_kill(void) {
   pid_t pid = argraw(0);
-  pcb_t* p = pcb + pid - 1;
+  pcb_t* p = get_pcb(pid);
   spin_lock_acquire(&p->lock);
   kill_pcb(p);
   spin_lock_release(&p->lock);
@@ -386,13 +451,25 @@ void do_kill(void) {
 void do_waitpid(void) {
   tcb_t* t = mythread();
   int pid = argraw(0);
-
+  pcb_t* p = pcb + pid - 1;
+  spin_lock_acquire(&p->lock);
+  if (p->status == PROC_INACTIVATE) {
+    spin_lock_release(&p->lock);
+    return ;
+  }
+  spin_lock_release(&p->lock);
+  spin_lock_acquire(&p->wait_lock);
+  do_block(&t->list, &p->wait_queue, &p->wait_lock);
 }
 
 void do_process_show() {
   for (int i = 0; i < NUM_MAX_TASK; i++) {
-    if (pcb[i].pid == 0)
+    spin_lock_acquire(&pcb[i].lock);
+    if (pcb[i].status == PROC_INACTIVATE) {
+      spin_lock_release(&pcb[i].lock);
       continue;
+    }
+    spin_lock_release(&pcb[i].lock);
     printk("pid: %d, name: %s\n", pcb[i].pid, pcb[i].name);
   }
 }

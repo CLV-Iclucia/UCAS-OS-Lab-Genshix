@@ -34,6 +34,18 @@ void sys_move_cursor(int x, int y) {
   invoke_syscall(SYSCALL_CURSOR, x, y, IGNORE, IGNORE, IGNORE);
 }
 
+void sys_clear_region(int x, int y, int w, int h) {
+  invoke_syscall(SYSCALL_CLEAR_REGION, x, y, w, h, IGNORE);
+}
+
+void sys_move_cursor_x(int x) {
+  invoke_syscall(SYSCALL_CURSOR, x, IGNORE, IGNORE, IGNORE, IGNORE);
+}
+
+void sys_move_cursor_y(int y) {
+  invoke_syscall(SYSCALL_CURSOR, IGNORE, y, IGNORE, IGNORE, IGNORE);
+}
+
 void sys_write(char *buff) {
   invoke_syscall(SYSCALL_WRITE, (long)buff, IGNORE, IGNORE, IGNORE, IGNORE);
 }

@@ -47,4 +47,10 @@ void do_write(void);
 void do_reflush(void);
 
 void do_move_cursor(void);
+
+void do_clear_region(void);
+
+void do_move_cursor_x(void);
+
+void do_move_cursor_y(void);
 #endif

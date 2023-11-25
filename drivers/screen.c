@@ -85,6 +85,23 @@ void screen_clear(void)
     screen_reflush();
 }
 
+void screen_clear_region(int x, int y, int w, int h)
+{
+    spin_lock_acquire(&screen_lock);
+    int i, j;
+    for (i = y; i < y + h; i++)
+    {
+        for (j = x; j < x + w; j++)
+        {
+            new_screen[SCREEN_LOC(j, i)] = ' ';
+        }
+    }
+    spin_lock_release(&screen_lock);
+    mythread()->cursor_x = x;
+    mythread()->cursor_y = y;
+    screen_reflush();
+}
+
 void screen_move_cursor(int x, int y)
 {
     vt100_move_cursor(x, y);
@@ -138,16 +155,51 @@ syscall_transfer_v_p(do_write, screen_write);
 // transfer do_reflush to screen_reflush
 syscall_transfer_v_v(do_reflush, screen_reflush)
 
+void do_move_cursor_x(void)
+{
+    int x;
+    tcb_t *t = mythread();
+    if (argint(0, &x) < 0) {
+        t->trapframe->a0() = -1;
+        return;
+    }
+    t->cursor_x = x;
+    t->trapframe->a0() = 0;
+}
+
+void do_move_cursor_y(void)
+{
+    int y;
+    tcb_t *t = mythread();
+    if (argint(0, &y) < 0) {
+        t->trapframe->a0() = -1;
+        return;
+    }
+    t->cursor_y = y;
+    t->trapframe->a0() = 0;
+}
+
 void do_move_cursor(void)
 {
     int x, y;
     tcb_t *t = mythread();
-    if (argint(0, &x) < 0 || argint(1, &y) < 0)
-    {
+    if (argint(0, &x) < 0 || argint(1, &y) < 0) {
         t->trapframe->a0() = -1;
         return;
     }
     t->cursor_x = x;
     t->cursor_y = y;
+    t->trapframe->a0() = 0;
+}
+
+void do_clear_region(void)
+{
+    int x, y, w, h;
+    tcb_t *t = mythread();
+    if (argint(0, &x) < 0 || argint(1, &y) < 0 || argint(2, &w) < 0 || argint(3, &h) < 0) {
+        t->trapframe->a0() = -1;
+        return;
+    }
+    screen_clear_region(x, y, w, h);
     t->trapframe->a0() = 0;
 }

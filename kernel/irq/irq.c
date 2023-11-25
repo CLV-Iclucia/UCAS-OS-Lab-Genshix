@@ -26,9 +26,17 @@ void interrupt_helper(regs_context_t *regs, uint64_t stval, uint64_t scause)
   cpu_t *c = mycpu();
   c->timer_needs_reset = false;
   tcb_t* t = c->current_running;
-  spin_lock_acquire(&t->lock);
-  if (t->status == TASK_EXITED)
+  pcb_t* p = t->pcb;
+  spin_lock_acquire(&p->lock);
+  if (p->status == PROC_INACTIVATE) {
+    spin_lock_release(&p->lock);
+    spin_lock_acquire(&t->lock);
+    assert(t->status == TASK_EXITED);
+    // once we jump to the scheduler we should never come back because this thread will be released
     sched(t);
+    assert_msg(false, "Cannot reach here.");
+  }
+  spin_lock_release(&p->lock);
   if (is_supervisor_mode()) {
     log(INTR, "Interrupt: scause: %lx, stval: %lx in supervisor mode", scause, stval);
     if (is_interrupt(scause)) {
@@ -60,23 +68,19 @@ void user_trap_ret()
   // at that time the thread is already designated to run on this cpu
   spin_lock_acquire(&t->lock);
   if (t->status == TASK_EXITED) {
-    // TODO: what should we do?
-    spin_lock_release(&t->lock); 
-  }
-  else if (c->timer_needs_reset) {
+    sched(t);
+    assert_msg(false, "Cannot reach here.");
+  } else if (c->timer_needs_reset) {
     spin_lock_release(&t->lock);
     needs_reset = true;
-  }
-  else if (get_ticks() >= c->next_time) { // if it is just a timer interrupt
+  } else if (get_ticks() >= c->next_time) { // if it is just a timer interrupt
     t->status = TASK_READY;
     sched(t);
     c = mycpu();
     // after returning from do_yield this might be another CPU!
     needs_reset = true;
-  } else {
+  } else
     spin_lock_release(&t->lock);
-  }
-  assert(!spin_lock_holding(&t->lock));
   set_user_mode();
   w_stvec((uint64_t)exception_handler_entry);
   if (needs_reset) {
@@ -96,7 +100,7 @@ void first_irq_timer(regs_context_t *regs, uint64_t stval, uint64_t scause)
 {
   // barrier here
   static int cpu_cnt = 0;
-  static spin_lock_t lock = { 
+  static spin_lock_t lock = {
     .cpuid = -1,
     .status = UNLOCKED, 
   };

@@ -94,8 +94,10 @@ typedef struct tcb tcb_t;
 typedef struct barrier
 {
     spin_lock_t lock;
-    uint32_t num;
     list_head queue;
+    uint32_t num;
+    int key;
+    int goal;
 } barrier_t;
 
 #define BARRIER_NUM 16
@@ -104,6 +106,9 @@ void init_barriers(void);
 int do_barrier_init(int key, int goal);
 void do_barrier_wait(int bar_idx);
 void do_barrier_destroy(int bar_idx);
+void do_barr_init(void);
+void do_barr_wait(void);
+void do_barr_destroy(void);
 
 typedef struct condition
 {
@@ -119,6 +124,10 @@ void do_condition_wait(int cond_idx, int mutex_idx);
 void do_condition_signal(int cond_idx);
 void do_condition_broadcast(int cond_idx);
 void do_condition_destroy(int cond_idx);
+void do_cond_init(void);
+void do_cond_wait(void);
+void do_cond_signal(void);
+void do_cond_broadcast(void);
 
 typedef struct semaphore
 {
@@ -134,9 +143,13 @@ int do_semaphore_init(int key, int init);
 void do_semaphore_up(int sema_idx);
 void do_semaphore_down(int sema_idx);
 void do_semaphore_destroy(int sema_idx);
+void do_sema_init(void);
+void do_sema_up(void);
+void do_sema_down(void);
+void do_sema_destroy(void);
 
 #define MAX_MBOX_LENGTH (64)
-
+#define MAX_NAME_LENGTH (32)
 typedef struct mailbox
 {
     spin_lock_t lock;
@@ -144,6 +157,7 @@ typedef struct mailbox
     int head;
     int tail;
     int buf[MAX_MBOX_LENGTH];
+    char name[MAX_NAME_LENGTH];
     list_head send_queue;
     list_head recv_queue;
 } mailbox_t;
@@ -154,7 +168,10 @@ int do_mbox_open(char *name);
 void do_mbox_close(int mbox_idx);
 int do_mbox_send(int mbox_idx, void * msg, int msg_length);
 int do_mbox_recv(int mbox_idx, void * msg, int msg_length);
-
+void do_mailbox_open(void);
+void do_mailbox_close(void);
+void do_mailbox_send(void);
+void do_mailbox_recv(void);
 /************************************************************/
 
 #endif
