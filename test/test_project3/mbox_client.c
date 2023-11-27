@@ -41,9 +41,9 @@ int main()
     int64_t bytes = 0;
 
     sys_move_cursor(0, position);
-    printf("[Client] server started");
+    printf("[Client] client started");
     sys_sleep(1);
-    for (;;)
+    for (int i = 0; i < 30; i++)
     {
         len = (rand() % ((MAX_MBOX_LENGTH - sizeof(MsgHeader_t))/2)) + 1;
         generateRandomString(strBuffer, len);

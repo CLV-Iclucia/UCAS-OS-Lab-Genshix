@@ -39,11 +39,11 @@ void sys_clear_region(int x, int y, int w, int h) {
 }
 
 void sys_move_cursor_x(int x) {
-  invoke_syscall(SYSCALL_CURSOR, x, IGNORE, IGNORE, IGNORE, IGNORE);
+  invoke_syscall(SYSCALL_CURSOR_X, x, IGNORE, IGNORE, IGNORE, IGNORE);
 }
 
 void sys_move_cursor_y(int y) {
-  invoke_syscall(SYSCALL_CURSOR, IGNORE, y, IGNORE, IGNORE, IGNORE);
+  invoke_syscall(SYSCALL_CURSOR_Y, IGNORE, y, IGNORE, IGNORE, IGNORE);
 }
 
 void sys_write(char *buff) {
@@ -198,5 +198,9 @@ int sys_mbox_send(int mbox_idx, void *msg, int msg_length) {
 int sys_mbox_recv(int mbox_idx, void *msg, int msg_length) {
   return invoke_syscall(SYSCALL_MBOX_RECV, mbox_idx, (long)msg, msg_length,
                         IGNORE, IGNORE);
+}
+
+void sys_taskset(int pid, uint32_t core_id) {
+  invoke_syscall(SYSCALL_TASKSET, pid, core_id, IGNORE, IGNORE, IGNORE);
 }
 /************************************************************/

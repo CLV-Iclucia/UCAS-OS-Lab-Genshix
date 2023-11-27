@@ -8,7 +8,6 @@
 #include <os/string.h>
 #include <sys/syscall.h>
 
-
 #define TABLE_SIZE 16
 
 mutex_lock_t mlocks[LOCK_NUM];
@@ -23,6 +22,7 @@ typedef struct hash_node {
   int next;
 } hash_node_t;
 
+/*
 static hash_node_t hash_nodes[MBOX_NUM];
 static int hash_table[TABLE_SIZE];
 static spin_lock_t hash_lock;
@@ -58,7 +58,7 @@ static unsigned int hash(const char *key, int len) {
   return hash % TABLE_SIZE;
 }
 
-void insert(const char *key, int len, int idx) {
+void hash_table_insert(const char *key, int len, int idx) {
   unsigned int index = hash(key, len);
   spin_lock_acquire(&hash_lock);
   int new_idx = alloc_hash_node();
@@ -118,7 +118,7 @@ void hash_table_remove(const char *name, int len) {
   }
   spin_lock_release(&hash_lock);
 }
-
+*/
 static int lock_idx_hash(int key) {
   // TODO: change this to a better one
   return key % LOCK_NUM;
@@ -169,7 +169,6 @@ int do_mutex_lock_init(int key) {
 void do_mutex_lock_acquire(int mlock_idx) {
   assert(mlock_idx >= 0 && mlock_idx < LOCK_NUM);
   tcb_t *t = mythread();
-  spin_lock_acquire(&t->lock);
   spin_lock_acquire(&mlocks[mlock_idx].lock);
   assert_msg(!HOLD_LOCK(t, mlock_idx),
              "lock is already held by the current process!");
@@ -177,10 +176,11 @@ void do_mutex_lock_acquire(int mlock_idx) {
     mlocks[mlock_idx].status = LOCKED;
     t->lock_bitmask |= LOCK_MASK(mlock_idx);
     spin_lock_release(&mlocks[mlock_idx].lock);
-    spin_lock_release(&t->lock);
-  } else
+  } else {
+    spin_lock_acquire(&t->lock);
     do_block(&(t->list), &mlocks[mlock_idx].block_queue,
              &mlocks[mlock_idx].lock);
+  }
 }
 
 void do_mutex_lock_release(int mlock_idx) {
@@ -197,7 +197,10 @@ void do_mutex_lock_release(int mlock_idx) {
   // return
   log_line(LOCK, "process %d (%s), thread %d released lock %d\n", t->pcb->pid,
            t->pcb->name, t->tid, mlock_idx);
-  if (LIST_EMPTY(mlocks[mlock_idx].block_queue)) return;
+  if (LIST_EMPTY(mlocks[mlock_idx].block_queue)) {
+    spin_lock_release(&mlocks[mlock_idx].lock);
+    return;
+  }
   tcb_t *nt = list_tcb(LIST_FIRST(mlocks[mlock_idx].block_queue));
   assert_msg(!HOLD_LOCK(nt, mlock_idx), "the awoken process holds the lock");
   nt->lock_bitmask |=
@@ -208,20 +211,78 @@ void do_mutex_lock_release(int mlock_idx) {
   spin_lock_release(&mlocks[mlock_idx].lock);
 }
 
-syscall_transfer_i_i(do_mutex_init, do_mutex_lock_init)
-    syscall_transfer_v_i(do_mutex_acquire, do_mutex_lock_acquire)
-        syscall_transfer_v_i(do_mutex_release, do_mutex_lock_release)
+static void check_queue(list_node_t* queue) {
+  if (queue->next == queue) return ;
+  list_node_t* node = queue->next;
+  list_node_t* node_next;
+  while(node != queue) {
+    node_next = node->next;
+    tcb_t* t = list_tcb(node);
+    assert(t->pcb->status == PROC_INACTIVATE);
+    do_unblock(node);
+    node = node_next;
+  }
+  assert(queue->next == queue);
+}
 
-            void init_conditions() {
+syscall_transfer_i_i(do_mutex_init, do_mutex_lock_init);
+syscall_transfer_v_i(do_mutex_acquire, do_mutex_lock_acquire);
+syscall_transfer_v_i(do_mutex_release, do_mutex_lock_release);
+
+void init_conditions() {
   for (int i = 0; i < CONDITION_NUM; i++) {
     spin_lock_init(&conds[i].lock);
     conds[i].queue.next = conds[i].queue.prev = &conds[i].queue;
   }
 }
 
-int do_condition_init(int cond_idx) { return lock_idx_hash(cond_idx); }
+int do_condition_init(int cond_key) {
+  int idx = lock_idx_hash(cond_key);
+  conds[idx].key = cond_key;
+  conds[idx].queue.next = conds[idx].queue.prev = &conds[idx].queue;
+  return lock_idx_hash(cond_key);
+}
 
-void do_condition_wait(int cond_idx, int mutex_idx) {}
+void do_condition_wait(int cond_idx, int mutex_idx) {
+  assert(cond_idx >= 0 && cond_idx < CONDITION_NUM);
+  assert(mutex_idx >= 0 && mutex_idx < LOCK_NUM);
+  tcb_t *t = mythread();
+  do_mutex_lock_release(mutex_idx);
+  spin_lock_acquire(&conds[cond_idx].lock);
+  spin_lock_acquire(&t->lock);
+  do_block(&(t->list), &conds[cond_idx].queue, &conds[cond_idx].lock);
+  do_mutex_lock_acquire(mutex_idx);
+}
+
+void do_condition_signal(int cond_idx) {
+  assert(cond_idx >= 0 && cond_idx < CONDITION_NUM);
+  if (LIST_EMPTY(conds[cond_idx].queue))
+    return;
+  spin_lock_acquire(&conds[cond_idx].lock);
+  do_unblock(LIST_FIRST(conds[cond_idx].queue));
+  spin_lock_release(&conds[cond_idx].lock);
+}
+
+void do_condition_broadcast(int cond_idx) {
+  assert(cond_idx >= 0 && cond_idx < CONDITION_NUM);
+  spin_lock_acquire(&conds[cond_idx].lock);
+  while (!LIST_EMPTY(conds[cond_idx].queue))
+    do_unblock(LIST_FIRST(conds[cond_idx].queue));
+  spin_lock_release(&conds[cond_idx].lock);
+}
+
+void do_condition_destroy(int cond_idx) {
+  assert(cond_idx >= 0 && cond_idx < CONDITION_NUM);
+  spin_lock_acquire(&conds[cond_idx].lock);
+  // run through the queue, there should be no active process
+  check_queue(&conds[cond_idx].queue);
+  spin_lock_release(&conds[cond_idx].lock);
+}
+syscall_transfer_i_i(do_cond_init, do_condition_init);
+syscall_transfer_v_i2(do_cond_wait, do_condition_wait);
+syscall_transfer_v_i(do_cond_signal, do_condition_signal);
+syscall_transfer_v_i(do_cond_broadcast, do_condition_broadcast);
+syscall_transfer_v_i(do_cond_destroy, do_condition_destroy);
 
 void init_barriers() {
   for (int i = 0; i < BARRIER_NUM; i++) {
@@ -251,6 +312,7 @@ void do_barrier_wait(int barrier_idx) {
     spin_lock_release(&barriers[barrier_idx].lock);
   } else {
     tcb_t *t = mythread();
+    spin_lock_acquire(&t->lock);
     do_block(&(t->list), &barriers[barrier_idx].queue,
              &barriers[barrier_idx].lock);
   }
@@ -259,10 +321,14 @@ void do_barrier_wait(int barrier_idx) {
 void do_barrier_destroy(int bar_idx) {
   assert(bar_idx >= 0 && bar_idx < BARRIER_NUM);
   spin_lock_acquire(&barriers[bar_idx].lock);
-  assert_msg(LIST_EMPTY(barriers[bar_idx].queue),
-             "destroying a barrier with blocked processes!");
+  check_queue(&barriers[bar_idx].queue);
+  barriers[bar_idx].num = 0;
   spin_lock_release(&barriers[bar_idx].lock);
 }
+
+syscall_transfer_i_i2(do_barr_init, do_barrier_init);
+syscall_transfer_v_i(do_barr_wait, do_barrier_wait);
+syscall_transfer_v_i(do_barr_destroy, do_barrier_destroy);
 
 void init_semaphores() {
   for (int i = 0; i < SEMAPHORE_NUM; i++) {
@@ -272,11 +338,19 @@ void init_semaphores() {
   }
 }
 
+int do_semaphore_init(int key, int init) {
+  int idx = lock_idx_hash(key);
+  semaphores[idx].key = key;
+  semaphores[idx].queue.next = semaphores[idx].queue.prev = &semaphores[idx].queue;
+  semaphores[idx].value = init;
+  return idx;
+}
+
 void do_semaphore_up(int sema_idx) {
   assert(sema_idx >= 0 && sema_idx < SEMAPHORE_NUM);
   spin_lock_acquire(&semaphores[sema_idx].lock);
+  semaphores[sema_idx].value++;
   if (LIST_EMPTY(semaphores[sema_idx].queue)) {
-    semaphores[sema_idx].value++;
     spin_lock_release(&semaphores[sema_idx].lock);
     return;
   }
@@ -293,31 +367,177 @@ void do_semaphore_down(int sema_idx) {
     return;
   }
   tcb_t *t = mythread();
+  spin_lock_acquire(&t->lock);
   do_block(&(t->list), &semaphores[sema_idx].queue, &semaphores[sema_idx].lock);
 }
 
-void init_mbox() {
+void do_semaphore_destroy(int sema_idx) {
+  assert(sema_idx >= 0 && sema_idx < SEMAPHORE_NUM);
+  spin_lock_acquire(&semaphores[sema_idx].lock);
+  check_queue(&semaphores[sema_idx].queue);
+  semaphores[sema_idx].value = 0;
+  spin_lock_release(&semaphores[sema_idx].lock);
+}
+syscall_transfer_v_i2(do_sema_init, do_semaphore_init);
+syscall_transfer_v_i(do_sema_up, do_semaphore_up);
+syscall_transfer_v_i(do_sema_down, do_semaphore_down);
+syscall_transfer_v_i(do_sema_destroy, do_semaphore_destroy);
+
+static int mbox_idx_queue[MBOX_NUM];
+static int mbox_idx_queue_head = 0, mbox_idx_queue_tail = 0;
+static spin_lock_t mbox_idx_queue_lock;
+
+void init_mbox(void) {
+  mbox_idx_queue_tail = MBOX_NUM - 1;
   for (int i = 0; i < MBOX_NUM; i++) {
     spin_lock_init(&mbox[i].lock);
+    mbox_idx_queue[i] = i;
     mbox[i].send_queue.next = mbox[i].send_queue.prev = &mbox[i].send_queue;
     mbox[i].recv_queue.next = mbox[i].recv_queue.prev = &mbox[i].recv_queue;
     mbox[i].length = 0;
     mbox[i].head = 0;
     mbox[i].tail = 0;
   }
-  init_hash_table();
+}
+
+int look_up(const char* name)
+{
+  for (int i = 0; i < MBOX_NUM; i++)
+    if (strcmp(name, mbox[i].name) == 0) return i;
+  return -1;
+}
+
+int alloc_mbox_idx() {
+  spin_lock_acquire(&mbox_idx_queue_lock);
+  if (mbox_idx_queue_head == mbox_idx_queue_tail) return -1;
+  int idx = mbox_idx_queue[mbox_idx_queue_head];
+  mbox_idx_queue_head = (mbox_idx_queue_head + 1) % MBOX_NUM;
+  spin_lock_release(&mbox_idx_queue_lock);
+  return idx;
+}
+
+int do_mbox_open(char* name) {
+  int idx = alloc_mbox_idx();
+  if (idx == -1) return -1;
+  spin_lock_acquire(&mbox[idx].lock);
+  strcpy(mbox[idx].name, name);
+  mbox[idx].length = 0;
+  mbox[idx].head = 0;
+  mbox[idx].tail = 0;
+  spin_lock_release(&mbox[idx].lock);
+  return idx;
 }
 
 int do_mbox_send(int mbox_idx, void *msg, int msg_length) {
   assert(mbox_idx >= 0 && mbox_idx < MBOX_NUM);
+  tcb_t *t = mythread();
   spin_lock_acquire(&mbox[mbox_idx].lock);
-  if (LIST_EMPTY(mbox[mbox_idx].recv_queue)) {
-    spin_lock_release(&mbox[mbox_idx].lock);
-    return 0;
+  int block_cnt = 0;
+  while (mbox[mbox_idx].length + msg_length > MAX_MBOX_LENGTH) {
+    block_cnt++;
+    spin_lock_acquire(&t->lock);
+    do_block(&(t->list), &mbox[mbox_idx].send_queue, &mbox[mbox_idx].lock);
+    spin_lock_acquire(&mbox[mbox_idx].lock);
   }
-  tcb_t *nt = list_tcb(LIST_FIRST(mbox[mbox_idx].recv_queue));
-  do_unblock(LIST_FIRST(mbox[mbox_idx].recv_queue));
+  for (int i = 0; i < msg_length; i++) {
+    mbox[mbox_idx].buf[mbox[mbox_idx].tail] = ((char*)msg)[i];
+    mbox[mbox_idx].tail = (mbox[mbox_idx].tail + 1) % MAX_MBOX_LENGTH;
+  }
+  mbox[mbox_idx].length += msg_length;
+  if (!LIST_EMPTY(mbox[mbox_idx].recv_queue))
+    do_unblock(LIST_FIRST(mbox[mbox_idx].recv_queue));
+  spin_lock_release(&mbox[mbox_idx].lock);
+  return block_cnt;
+}
+
+int do_mbox_recv(int mbox_idx, void *msg, int msg_length) {
+  assert(mbox_idx >= 0 && mbox_idx < MBOX_NUM);
+  tcb_t *t = mythread();
+  spin_lock_acquire(&mbox[mbox_idx].lock);
+  int block_cnt = 0;
+  while (mbox[mbox_idx].length < msg_length) {
+    block_cnt++;
+    spin_lock_acquire(&t->lock);
+    do_block(&(t->list), &mbox[mbox_idx].recv_queue, &mbox[mbox_idx].lock);
+    spin_lock_acquire(&mbox[mbox_idx].lock);
+  }
+  for (int i = 0; i < msg_length; i++) {
+    ((char*)msg)[i] = mbox[mbox_idx].buf[mbox[mbox_idx].head];
+    mbox[mbox_idx].head = (mbox[mbox_idx].head + 1) % MAX_MBOX_LENGTH;
+  }
+  mbox[mbox_idx].length -= msg_length;
+  if (!LIST_EMPTY(mbox[mbox_idx].send_queue))
+    do_unblock(LIST_FIRST(mbox[mbox_idx].send_queue));
+  spin_lock_release(&mbox[mbox_idx].lock);
+  return block_cnt;
+}
+
+void do_mbox_close(int mbox_idx) {
+  assert(mbox_idx >= 0 && mbox_idx < MBOX_NUM);
+  spin_lock_acquire(&mbox[mbox_idx].lock);
+  check_queue(&mbox[mbox_idx].send_queue);
+  check_queue(&mbox[mbox_idx].recv_queue);
+  mbox[mbox_idx].length = 0;
+  mbox[mbox_idx].head = 0;
+  mbox[mbox_idx].tail = 0;
+  mbox[mbox_idx].name[0] = '\0';
   spin_lock_release(&mbox[mbox_idx].lock);
 }
 
-int do_mbox_recv(int mbox_idx, void *msg, int msg_length) {}
+void do_mailbox_open(void)
+{
+  char* name = (char*)argraw(0);
+  int len;
+  if (argint(1, &len) < 0) {
+    printk("argint failed\n");
+    return;
+  }
+  int idx = look_up(name);
+  if (idx == -1) {
+    idx = do_mbox_open(name);
+    if (idx == -1) {
+      printk("mailbox open failed\n");
+      return;
+    }
+  }
+  tcb_t *t = mythread();
+  t->trapframe->a0() = idx;
+}
+
+void do_mailbox_send(void)
+{
+  int mbox_idx;
+  if (argint(0, &mbox_idx) < 0) {
+    printk("argint failed\n");
+    return;
+  }
+  char* msg = (char*)argraw(1);
+  int msg_length;
+  if (argint(2, &msg_length) < 0) {
+    printk("argint failed\n");
+    return;
+  }
+  int block_cnt = do_mbox_send(mbox_idx, msg, msg_length);
+  tcb_t *t = mythread();
+  t->trapframe->a0() = block_cnt;
+}
+
+void do_mailbox_recv(void)
+{
+  int mbox_idx;
+  if (argint(0, &mbox_idx) < 0) {
+    printk("argint failed\n");
+    return;
+  }
+  char* msg = (char*)argraw(1);
+  int msg_length;
+  if (argint(2, &msg_length) < 0) {
+    printk("argint failed\n");
+    return;
+  }
+  int block_cnt = do_mbox_recv(mbox_idx, msg, msg_length);
+  tcb_t *t = mythread();
+  t->trapframe->a0() = block_cnt;
+}
+
+syscall_transfer_v_i(do_mailbox_close, do_mbox_close);

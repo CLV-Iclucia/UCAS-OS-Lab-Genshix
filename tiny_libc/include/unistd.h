@@ -18,6 +18,7 @@ long sys_get_tick(void);
 int sys_mutex_init(int key);
 void sys_mutex_acquire(int mutex_idx);
 void sys_mutex_release(int mutex_idx);
+void sys_taskset(int pid, uint32_t mask);
 
 /************************************************************/
 /* TODO: [P3 task1] ps, getchar */
@@ -37,6 +38,11 @@ pid_t sys_getpid();
 int  sys_barrier_init(int key, int goal);
 void sys_barrier_wait(int bar_idx);
 void sys_barrier_destroy(int bar_idx);
+
+int sys_semaphore_init(int key, int init);
+void sys_semaphore_up(int sem_idx);
+void sys_semaphore_down(int sem_idx);
+void sys_semaphore_destroy(int sem_idx);
 
 /* TODO: [P3 task2] condition */ 
 int sys_condition_init(int key);

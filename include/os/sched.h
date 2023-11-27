@@ -38,7 +38,7 @@
 #include <type.h>
 #include <assert.h>
 
-#define NUM_MAX_TASK 16
+#define NUM_MAX_TASK 32
 #define NAME_MAXLEN 16
 #define NUM_MAX_THREADS NUM_MAX_TASK * 4
 
@@ -139,6 +139,7 @@ typedef enum {
 
 /* Process Control Block */
 typedef struct pcb {
+  char name[NAME_MAXLEN]; // read only
   spin_lock_t lock;
   // constraints for thread lists:
   // 1. num_threads == list_length(&threads)
@@ -149,10 +150,11 @@ typedef struct pcb {
   proc_status_t status;
   spin_lock_t wait_lock;
   list_node_t wait_queue;
+  struct pcb *parent;     // read only
   ptr_t addr;             // read only
   /* process id */
   pid_t pid;              // read only
-  char name[NAME_MAXLEN]; // read only
+  uint32_t taskset;
 } pcb_t;
 
 /* Thread Control Block */
@@ -177,6 +179,7 @@ typedef struct tcb {
   // constraints: lock_bitmasks cannot overlap
   uint64_t lock_bitmask;   // locks held by this thread
   pcb_t *pcb;              // the process this thread belongs to
+  uint8_t cpuid;
 } tcb_t;
 
 typedef uint64_t thread_t;
@@ -233,7 +236,13 @@ static inline tcb_t* main_thread(pcb_t *p)
   assert(spin_lock_holding(&p->lock));
   return list_thread(p->threads.next);
 }
-
+// atomically insert a tcb into ready queue
+static inline void ready_queue_insert(tcb_t* t) {
+  spin_lock_acquire(&ready_queue_lock);
+  LIST_INSERT_TAIL(&ready_queue, &t->list);
+  t->current_queue = &ready_queue;
+  spin_lock_release(&ready_queue_lock);
+}
 // must be called with t->lock held, but will exit with NO LOCK
 // what sched do: update queue, current cpu and switch context
 // NOTE: the update of the status of tcb should be done before calling this
@@ -245,11 +254,9 @@ static inline void sched(tcb_t *t)
   c->current_running = sched_tcb + c->id;
   // we only put new nodes at the tail of the ready_queue
   // and if the thread is blocked, it should lie in other queues so we do nothing
-  if (t->status != TASK_BLOCKED) {
-    spin_lock_acquire(&ready_queue_lock);
-    LIST_INSERT_TAIL(&ready_queue, &t->list);
-    spin_lock_release(&ready_queue_lock);
-  }
+  if (t->status != TASK_BLOCKED)
+    ready_queue_insert(t);
+  t->cpuid = -1;
   spin_lock_release(&t->lock);
   switch_to(current_ctx, c->sched_ctx);
   assert(holding_no_spin_lock());
@@ -260,31 +267,26 @@ static inline void prepare_sched(tcb_t* t) {
   assert(spin_lock_holding(&t->lock));
   t->status = TASK_READY;
   assert(t->current_queue == NULL);
-  spin_lock_acquire(&ready_queue_lock);
-  LIST_INSERT_TAIL(&ready_queue, &t->list);
-  t->current_queue = &ready_queue;
-  spin_lock_release(&ready_queue_lock);
+  ready_queue_insert(t);
 }
 
 // atomically takes and removes the head of the queue, NULL if empty
 static inline tcb_t* ready_queue_pop() {
-  tcb_t* t = NULL;
   spin_lock_acquire(&ready_queue_lock);
+  if (LIST_EMPTY(ready_queue)) {
+    spin_lock_release(&ready_queue_lock);
+    return NULL;
+  }
+  tcb_t* t = NULL;
   list_node_t* head = LIST_FIRST(ready_queue);
-  if (head != &ready_queue)
-    t = list_tcb(head);
+  t = list_tcb(head);
+  t->current_queue = NULL;
   LIST_REMOVE(head);
   spin_lock_release(&ready_queue_lock);
   return t;
 }
 
-// atomically insert a tcb into ready queue
-static inline void ready_queue_insert(tcb_t* t) {
-  spin_lock_acquire(&ready_queue_lock);
-  LIST_INSERT_TAIL(&ready_queue, &t->list);
-  t->current_queue = &ready_queue;
-  spin_lock_release(&ready_queue_lock);
-}
+
 
 static inline pcb_t* get_pcb(int pid) {
   assert(pid != -1);
@@ -305,8 +307,9 @@ extern void do_exec(void);
 extern void do_exit(void);
 extern void do_kill(void);
 extern void do_waitpid(void);
-extern void do_process_show(void);
+extern void do_ps(void);
 extern void do_getpid(void);
+extern void do_taskset(void);
 
 /************************************************************/
 

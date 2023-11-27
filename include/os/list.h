@@ -70,6 +70,6 @@ typedef list_node_t list_head;
     {                     \
         (node)->prev->next = (node)->next; \
         (node)->next->prev = (node)->prev; \
-        (node)->next = (node)->prev = NULL;   \
+        (node)->next = (node)->prev = node;   \
     }
 #endif

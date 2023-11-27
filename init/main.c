@@ -32,7 +32,7 @@ char welcome[] =
     "\n"
     "Welcome to the world of Genshix!\n"
     "========================================\n";
-#define TASK_MAXNUM 16
+#define TASK_MAXNUM 32
 uint32_t tasknum;
 // task info array
 task_info_t tasks[TASK_MAXNUM];
@@ -128,18 +128,22 @@ static void img_putstr(uint32_t offset) {
 /************************************************************/
 
 static char* init_tasks[] = {
-    "print2",
-    "print1",
-  //  "fly",
-   "lock1",
-   "lock2",
-    "sleep",
-    "timer",
-        "threads",
+    "shell",
     "",
 };
 
 static void init_pcb(void) {
+  for (int i = 0; i < NUM_MAX_TASK; i++) {
+    pcb[i].status = PROC_INACTIVATE;
+    spin_lock_init(&pcb[i].lock);
+    spin_lock_init(&pcb[i].wait_lock);
+    pcb[i].wait_queue.next = pcb[i].wait_queue.prev = &pcb[i].wait_queue;
+  }
+  for (int i = 0; i < NUM_MAX_THREADS; i++) {
+    tcb[i].status = TASK_EXITED;
+    tcb[i].current_queue = NULL;
+    spin_lock_init(&tcb[i].lock);
+  }
   for (int i = 0; i < tasknum; i++) {
     // load the task into the memory
     if (init_tasks[i][0] == '\0') break;
@@ -147,6 +151,7 @@ static void init_pcb(void) {
     uint32_t load_addr = (uint32_t)load_task_by_name(init_tasks[i]);
     pcb_t* p = new_pcb(init_tasks[i], load_addr);
     if (p == NULL) panic("new_pcb failed!\n\r");
+    p->taskset = ((2 << NR_CPUS) - 1);
     tcb_t* t = main_thread(p);
     spin_lock_acquire(&t->lock);
     prepare_sched(t);
@@ -185,11 +190,28 @@ static void init_syscall(void) {
   register_syscall(SYSCALL_THREAD_YIELD, thread_yield);
   register_syscall(SYSCALL_GETPID, getpid);
   register_syscall(SYSCALL_KILL, kill);
-  register_syscall(SYSCALL_SHOW_TASK, process_show);
+  register_syscall(SYSCALL_PS, ps);
   register_syscall(SYSCALL_EXEC, exec);
   register_syscall(SYSCALL_EXIT, exit);
   register_syscall(SYSCALL_WAITPID, waitpid);
   register_syscall(SYSCALL_READCH, getchar);
+  register_syscall(SYSCALL_TASKSET, taskset);
+  register_syscall(SYSCALL_BARR_INIT, barr_init);
+  register_syscall(SYSCALL_BARR_WAIT, barr_wait);
+  register_syscall(SYSCALL_BARR_DESTROY, barr_destroy);
+  register_syscall(SYSCALL_COND_INIT, cond_init);
+  register_syscall(SYSCALL_COND_WAIT, cond_wait);
+  register_syscall(SYSCALL_COND_SIGNAL, cond_signal);
+  register_syscall(SYSCALL_COND_BROADCAST, cond_broadcast);
+  register_syscall(SYSCALL_COND_DESTROY, cond_destroy);
+  register_syscall(SYSCALL_SEMA_INIT, sema_init);
+  register_syscall(SYSCALL_SEMA_UP, sema_up);
+  register_syscall(SYSCALL_SEMA_DOWN, sema_down);
+  register_syscall(SYSCALL_SEMA_DESTROY, sema_destroy);
+  register_syscall(SYSCALL_MBOX_OPEN, mailbox_open);
+  register_syscall(SYSCALL_MBOX_CLOSE, mailbox_close);
+  register_syscall(SYSCALL_MBOX_SEND, mailbox_send);
+  register_syscall(SYSCALL_MBOX_RECV, mailbox_recv);
 }
 
 /************************************************************/
@@ -244,12 +266,10 @@ int main(void) {
     time_base = bios_read_fdt(TIMEBASE);
     init_pcb();
     wakeup_other_hart();
-  } else {
-    printk("CPU %d: Hello there, CPU 0!\n", mycpuid());
+  } else
     init_exception();
-  }
   // Init Process Control Blocks |•'-'•) ✧
-  printk("CPU %d: Hello there, adventurer!\n", mycpuid());
+  printk("CPU %d: Glory to mankind!\n", mycpuid());
   latency(2);
 
   if (mycpuid() == 0) screen_clear();

@@ -80,6 +80,31 @@ void do_fn(void)\
     t->trapframe->a0() = 0;\
 }
 
+#define syscall_transfer_v_i2(do_fn, fn)\
+void do_fn(void)\
+{\
+    tcb_t* t = mythread();\
+    int arg0, arg1;\
+    if (argint(0, &arg0) < 0 || argint(1, &arg1) < 0) {\
+        t->trapframe->a0() = -1;\
+        return;\
+    }\
+    fn(arg0, arg1);\
+    t->trapframe->a0() = 0;\
+}
+
+#define syscall_transfer_i_i2(do_fn, fn)\
+void do_fn(void)\
+{\
+    tcb_t* t = mythread();\
+    int arg0, arg1;\
+    if (argint(0, &arg0) < 0 || argint(1, &arg1) < 0) {\
+        t->trapframe->a0() = -1;\
+        return;\
+    }\
+    t->trapframe->a0() = fn(arg0, arg1);\
+}
+
 #define NUM_SYSCALLS 96
 
 extern uint64_t argraw(int n);

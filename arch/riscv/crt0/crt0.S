@@ -17,7 +17,8 @@ clear_loop:
 end_loop:
     call main
     // TODO[p3]: call exit
-    
+    li a7, 1
+    ecall
     ld ra, 0(sp)
     addi sp, sp, 8
     

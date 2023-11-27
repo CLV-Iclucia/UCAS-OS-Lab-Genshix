@@ -42,6 +42,7 @@ ptr_t allocKernelPage(int numPage) {
         released_kernel_pages[i] =
             released_kernel_pages[num_free_kernel_records - 1];
       num_free_kernel_records--;
+      spin_lock_release(&kernMemLock);
       return ret;
     }
   }
@@ -62,6 +63,7 @@ ptr_t allocUserPage(int numPage) {
       if (num_free_user_records > 1)
         released_user_pages[i] = released_user_pages[num_free_user_records - 1];
       num_free_user_records--;
+      spin_lock_release(&userMemLock);
       return ret;
     }
   }
