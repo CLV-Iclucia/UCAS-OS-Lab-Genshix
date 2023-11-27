@@ -1,9 +1,0 @@
-#include <stdio.h>
-#include <unistd.h>
-
-int main(void)
-{
-   while(1) {
-  //  sys_yield();
-   } 
-}

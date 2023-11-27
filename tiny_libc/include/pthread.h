@@ -1,10 +1,13 @@
-#ifndef __PTHREAD_H__
-#define __PTHREAD_H__
+#ifndef PTHREAD_H_
+#define PTHREAD_H_
+#include "unistd.h"
 
-#include <stdint.h>
-typedef uint64_t pthread_t;
-typedef uint64_t pthread_attr_t;
-int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine)(void *), void *arg);
-void pthread_yield(void);
-void pthread_exit(void *retval);
+/* TODO:[P4-task4] pthread_create/wait */
+void pthread_create(pthread_t *thread,
+                   void (*start_routine)(void*),
+                   void *arg);
+
+int pthread_join(pthread_t thread);
+
+
 #endif

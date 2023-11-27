@@ -1,79 +1,86 @@
-#ifndef ATOMIC_H
-#define ATOMIC_H
+#ifndef STDATOMIC_H
+#define STDATOMIC_H
 
-/* from linux/arch/riscv/include/asm/cmpxchg.h */
+/* from linux/arch/riscv/include/asm/cmpxchg.h and atomic.h */
 
 #include <stdint.h>
 
-typedef struct {
-    volatile int64_t counter;
-} atomic_t;
+typedef volatile uint32_t atomic_uint32_t;
+typedef volatile uint64_t atomic_uint64_t;
 
-#define READ_ONCE(x) (*(volatile typeof(x) *)&(x))
-#define WRITE_ONCE(x, val) (*(volatile typeof(x) *)&(x) = (val))
-#define ATOMIC_INIT(i) { (i) }
+typedef volatile unsigned int atomic_uint;
+typedef volatile int atomic_int;
+typedef volatile unsigned long atomic_ulong;
+typedef volatile long atomic_long;
 
-#define atomic_read(v) READ_ONCE((v)->counter)
-#define atomic_set(v, i) WRITE_ONCE((v)->counter, (i))
-
-static inline uint32_t atomic_swap(uint32_t val, ptr_t mem_addr) {
-  uint32_t ret;
-  __asm__ __volatile__("amoswap.w.aqrl %0, %2, %1\n"
-                       : "=r"(ret), "+A"(*(uint32_t *)mem_addr)
-                       : "r"(val)
-                       : "memory");
-  return ret;
+static inline uint32_t atomic_load(volatile uint32_t* obj)
+{
+    uint32_t arg = UINT32_MAX;
+    uint32_t ret;
+    __asm__ __volatile__ (
+        "amoand.w.aqrl %0, %2, %1\n"
+        : "=r"(ret), "+A" (*(uint32_t*)obj)
+        : "r"(arg)
+        : "memory");
+    return ret;
 }
 
-static inline uint64_t atomic_swap_d(uint64_t val, ptr_t mem_addr) {
-  uint64_t ret;
-  __asm__ __volatile__("amoswap.d.aqrl %0, %2, %1\n"
-                       : "=r"(ret), "+A"(*(uint64_t *)mem_addr)
-                       : "r"(val)
-                       : "memory");
-  return ret;
+static inline uint64_t atomic_load_d(volatile uint64_t* obj)
+{
+    uint64_t arg = UINT64_MAX;
+    uint64_t ret;
+    __asm__ __volatile__ (
+                          "amoand.w.aqrl %0, %2, %1\n"
+                          : "=r"(ret), "+A" (*(uint64_t*)obj)
+                          : "r"(arg)
+                          : "memory");
+    return ret;
 }
 
-/* if *mem_addr == old_val, then *mem_addr = new_val, else return *mem_addr */
-static inline uint32_t atomic_cmpxchg(uint32_t old_val, uint32_t new_val,
-                                      ptr_t mem_addr) {
-  uint32_t ret;
-  register unsigned int __rc;
-  __asm__ __volatile__("0:	lr.w %0, %2\n"
-                       "	bne  %0, %z3, 1f\n"
-                       "	sc.w.rl %1, %z4, %2\n"
-                       "	bnez %1, 0b\n"
-                       "	fence rw, rw\n"
-                       "1:\n"
-                       : "=&r"(ret), "=&r"(__rc), "+A"(*(uint32_t *)mem_addr)
-                       : "rJ"(old_val), "rJ"(new_val)
-                       : "memory");
-  return ret;
+static inline int fetch_add(volatile void* obj, int arg)
+{
+    uint32_t ret;
+    __asm__ __volatile__ (
+        "amoadd.w.aqrl %0, %2, %1\n"
+        : "=r"(ret), "+A" (*(uint32_t*)obj)
+        : "r"(arg)
+        : "memory");
+    return ret;
 }
 
-/* if *mem_addr == old_val, then *mem_addr = new_val, else return *mem_addr */
-static inline uint64_t atomic_cmpxchg_d(uint64_t old_val, uint64_t new_val,
-                                        ptr_t mem_addr) {
-  uint64_t ret;
-  register unsigned int __rc;
-  __asm__ __volatile__("0:	lr.d %0, %2\n"
-                       "	bne  %0, %z3, 1f\n"
-                       "	sc.d.rl %1, %z4, %2\n"
-                       "	bnez %1, 0b\n"
-                       "	fence rw, rw\n"
-                       "1:\n"
-                       : "=&r"(ret), "=&r"(__rc), "+A"(*(uint64_t *)mem_addr)
-                       : "rJ"(old_val), "rJ"(new_val)
-                       : "memory");
-  return ret;
+static inline int fetch_sub(volatile void* obj, int arg)
+{
+    uint32_t ret;
+    arg = 0 - arg;
+    __asm__ __volatile__ (
+        "amoadd.w.aqrl %0, %2, %1\n"
+        : "=r"(ret), "+A" (*(uint32_t*)obj)
+        : "r"(arg)
+        : "memory");
+    return ret;
 }
 
-static inline void atomic_inc(atomic_t *mem_addr) {
-  uint64_t old = atomic_read(mem_addr), expect;
-  do {
-    expect = old;
-    old = atomic_cmpxchg_d(expect, expect + 1, (ptr_t)mem_addr);
-  } while (expect != old);
+static inline int atomic_exchange(volatile void* obj, int desired)
+{
+    int ret;
+    __asm__ __volatile__ (
+        "amoswap.w.aqrl %0, %2, %1\n"
+        : "=r"(ret), "+A" (*(uint32_t*)obj)
+        : "r"(desired)
+        : "memory");
+    return ret;
 }
+
+static inline long atomic_exchange_d(volatile void* obj, long desired)
+{
+    uint64_t ret;
+    __asm__ __volatile__ (
+                          "amoswap.d.aqrl %0, %2, %1\n"
+                          : "=r"(ret), "+A" (*(uint64_t*)obj)
+                          : "r"(desired)
+                          : "memory");
+    return ret;
+}
+
 
 #endif /* ATOMIC_H */
