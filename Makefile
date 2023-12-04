@@ -83,8 +83,8 @@ DEFLATE_DIR     = $(DIR_TOOLS)/deflate
 DIR_TEST_PROJ   = $(DIR_TEST)/test_project$(PROJECT_IDX)
 
 BOOTLOADER_ENTRYPOINT   = 0x50200000
-KERNEL_ENTRYPOINT       = 0x50201000
-USER_ENTRYPOINT         = 0x52000000
+KERNEL_ENTRYPOINT       = 0xffffffc050202000
+USER_ENTRYPOINT         = 0x100000
 
 # -----------------------------------------------------------------------
 # UCAS-OS Kernel Source Files
@@ -97,9 +97,10 @@ SRC_DRIVER  = $(wildcard $(DIR_DRIVERS)/*.c)
 SRC_INIT    = $(wildcard $(DIR_INIT)/*.c)
 SRC_KERNEL  = $(wildcard $(DIR_KERNEL)/*/*.c)
 SRC_LIBS    = $(wildcard $(DIR_LIBS)/*.c)
+SRC_START   = $(wildcard $(DIR_ARCH)/kernel/*.c)
 
 ELF_DECOMPRESSOR = $(DIR_BUILD)/decompressor
-SRC_MAIN    = $(SRC_ARCH) $(SRC_INIT) $(SRC_BIOS) $(SRC_DRIVER) $(SRC_KERNEL) $(SRC_LIBS)
+SRC_MAIN    = $(SRC_ARCH) $(SRC_START) $(SRC_INIT) $(SRC_BIOS) $(SRC_DRIVER) $(SRC_KERNEL) $(SRC_LIBS)
 ELF_BOOT    = $(DIR_BUILD)/bootblock
 ELF_MAIN    = $(DIR_BUILD)/main
 ELF_IMAGE   = $(DIR_BUILD)/image
@@ -174,7 +175,8 @@ $(ELF_BOOT): $(SRC_BOOT) riscv.lds
 	$(CC) $(BOOT_CFLAGS) -o $@ $(SRC_BOOT) -e main
 
 $(ELF_MAIN): $(SRC_MAIN) riscv.lds
-	$(CC) $(KERNEL_CFLAGS) -o $@ $(SRC_MAIN)
+	$(CC) $(KERNEL_CFLAGS) -o $@ $(SRC_MAIN) -e _boot
+
 
 $(OBJ_CRT0): $(SRC_CRT0)
 	$(CC) $(USER_CFLAGS) -I$(DIR_ARCH)/include -c $< -o $@
@@ -192,11 +194,9 @@ $(DIR_BUILD)/%.o: $(DIR_TINYLIBC)/%.c
 
 $(DIR_BUILD)/%: $(DIR_TEST_PROJ)/%.c $(OBJ_CRT0) $(LIB_TINYC) riscv.lds
 	$(CC) $(USER_CFLAGS) -o $@ $(OBJ_CRT0) $< $(USER_LDFLAGS) -Wl,--defsym=TEXT_START=$(USER_ENTRYPOINT) -T riscv.lds
-	$(eval USER_ENTRYPOINT := $(shell python3 -c "print(hex(int('$(USER_ENTRYPOINT)', 16) + int('0x10000', 16)))"))
 
-$(DIR_BUILD)/shell: $(SRC_SHELL) $(OBJ_CRT0) $(LIB_TINYC) riscv.lds
+$(DIR_BUILD)/%: $(DIR_TEST)/%.c $(OBJ_CRT0) $(LIB_TINYC) riscv.lds
 	$(CC) $(USER_CFLAGS) -o $@ $(OBJ_CRT0) $< $(USER_LDFLAGS) -Wl,--defsym=TEXT_START=$(USER_ENTRYPOINT) -T riscv.lds
-	$(eval USER_ENTRYPOINT := $(shell python3 -c "print(hex(int('$(USER_ENTRYPOINT)', 16) + int('0x10000', 16)))"))
 
 elf: $(ELF_DECOMPRESSOR) $(ELF_BOOT) $(ELF_MAIN) $(LIB_TINYC) $(ELF_USER)
 

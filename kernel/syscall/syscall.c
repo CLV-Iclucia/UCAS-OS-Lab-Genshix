@@ -1,4 +1,4 @@
-#include "os/lock.h"
+#include <os/lock.h>
 #include <debugs.h>
 #include <os/sched.h>
 #include <printk.h>
@@ -25,25 +25,6 @@ void dump_trapframe(regs_context_t *regs) {
   printl("sstatus: 0x%lx sbadaddr: 0x%lx scause: %lu\n\r", regs->sstatus,
          regs->sbadaddr, regs->scause);
   printl("sepc: 0x%lx\n\r", regs->sepc);
-}
-
-uint64_t argraw(int n) {
-  regs_context_t *r = mythread()->trapframe;
-  assert(n >= 0 && n < 6);
-  switch(n) {
-    case 0: return r->a0();
-    case 1: return r->a1();
-    case 2: return r->a2();
-    case 3: return r->a3();
-    case 4: return r->a4();
-    case 5: return r->a5();
-  }
-  panic("argraw: should not reach here");
-}
-
-int argint(int n, int *ip) {
-  *ip = argraw(n);
-  return 0;
 }
 
 void do_strace(void) {

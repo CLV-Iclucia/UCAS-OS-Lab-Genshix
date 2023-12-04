@@ -75,16 +75,6 @@ typedef uint64_t size_t;
 # define UINT32_MAX             (4294967295U)
 # define UINT64_MAX             (18446744073709551615lu)
 
-typedef struct kva {
-    uint64_t addr;
-} kva_t;
 
-typedef struct pa {
-    uint64_t addr;
-} pa_t;
-
-typedef struct uva {
-    uint64_t addr;
-} va_t;
 
 #endif

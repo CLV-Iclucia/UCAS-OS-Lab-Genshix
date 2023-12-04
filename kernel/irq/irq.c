@@ -1,3 +1,4 @@
+#include <pgtable.h>
 #include <os/lock.h>
 #include <assert.h>
 #include <common.h>
@@ -28,6 +29,7 @@ void interrupt_helper(regs_context_t *regs, uint64_t stval, uint64_t scause)
   tcb_t* t = c->current_running;
   pcb_t* p = t->pcb;
   spin_lock_acquire(&p->lock);
+  enable_user_memory_access();
   if (p->status == PROC_INACTIVATE) {
     spin_lock_release(&p->lock);
     spin_lock_acquire(&t->lock);
@@ -38,15 +40,12 @@ void interrupt_helper(regs_context_t *regs, uint64_t stval, uint64_t scause)
   }
   spin_lock_release(&p->lock);
   if (is_supervisor_mode()) {
-    log(INTR, "Interrupt: scause: %lx, stval: %lx in supervisor mode", scause, stval);
-    if (is_interrupt(scause)) {
+    if (is_interrupt(scause))
       irq_table[exception_code(scause)](regs, stval, scause);
-    } else {
+    else
       panic("An exception happens in kernel!\n");
-    }
     return;
   }
-  log(INTR, "Interrupt: scause: %lx, stval: %lx in user mode", scause, stval);
   set_supervisor_mode();
   w_stvec((uint64_t)kernel_exception_handler);
   if (is_interrupt(scause)) {
@@ -124,7 +123,7 @@ void first_irq_timer(regs_context_t *regs, uint64_t stval, uint64_t scause)
     irq_table[IRQC_S_TIMER] = handle_irq_timer;
   do_scheduler();
 }
-
+extern void handle_pgfault();
 void init_exception() 
 {
   irq_table[IRQC_S_TIMER] = first_irq_timer;
@@ -135,8 +134,9 @@ void init_exception()
   exc_table[EXCC_INST_ACCESS] = handle_other;
   exc_table[EXCC_INST_PAGE_FAULT] = handle_other;
   exc_table[EXCC_LOAD_ACCESS] = handle_other;
-  exc_table[EXCC_LOAD_PAGE_FAULT] = handle_other;
-  exc_table[EXCC_STORE_PAGE_FAULT] = handle_other;
+  exc_table[EXCC_INST_PAGE_FAULT] = handle_pgfault;
+  exc_table[EXCC_LOAD_PAGE_FAULT] = handle_pgfault;
+  exc_table[EXCC_STORE_PAGE_FAULT] = handle_pgfault;
   setup_exception();
 }
 

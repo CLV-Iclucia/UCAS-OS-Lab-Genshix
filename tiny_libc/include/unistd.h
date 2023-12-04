@@ -57,5 +57,6 @@ void sys_mbox_close(int mbox_id);
 int sys_mbox_send(int mbox_idx, void *msg, int msg_length);
 int sys_mbox_recv(int mbox_idx, void *msg, int msg_length);
 /************************************************************/
-
+void* sys_shmpageget(int key);
+void sys_shmpagedt(void *addr);
 #endif

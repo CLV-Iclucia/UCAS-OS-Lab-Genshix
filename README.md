@@ -1,6 +1,6 @@
 # Genshix: a Simple Unix-like OS
 
-## Currently working on Project-3
+## Currently working on Project-4
 
 ## How to build and boot up
 

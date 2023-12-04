@@ -62,5 +62,9 @@ static inline void set_user_mode()
   x &= ~SR_SPP;
   w_sstatus(x);
 }
-
+static inline void enable_user_memory_access() {
+  uint64_t sstatus = r_sstatus();
+  sstatus |= SR_SUM;
+  w_sstatus(sstatus);
+}
 #endif

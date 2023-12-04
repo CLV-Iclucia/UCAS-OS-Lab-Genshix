@@ -23,7 +23,7 @@
 #include <type.h>
 
 #define version_buf 50
-#define META_OFFSET_ADDR 0x502001f4
+#define META_OFFSET_KVA 0xffffffc0502001f4
 int version = 2;  // version must between 0 and 9
 char buf[version_buf];
 char welcome[] =
@@ -148,8 +148,7 @@ static void init_pcb(void) {
     // load the task into the memory
     if (init_tasks[i][0] == '\0') break;
     printl("loading task %s\n", init_tasks[i]);
-    uint32_t load_addr = (uint32_t)load_task_by_name(init_tasks[i]);
-    pcb_t* p = new_pcb(init_tasks[i], load_addr);
+    pcb_t *p = new_pcb(init_tasks[i]);
     if (p == NULL) panic("new_pcb failed!\n\r");
     p->taskset = ((2 << NR_CPUS) - 1);
     tcb_t* t = main_thread(p);
@@ -188,6 +187,7 @@ static void init_syscall(void) {
   register_syscall(SYSCALL_THREAD_CREATE, thread_create);
   register_syscall(SYSCALL_THREAD_EXIT, thread_exit);
   register_syscall(SYSCALL_THREAD_YIELD, thread_yield);
+  register_syscall(SYSCALL_THREAD_JOIN, thread_join);
   register_syscall(SYSCALL_GETPID, getpid);
   register_syscall(SYSCALL_KILL, kill);
   register_syscall(SYSCALL_PS, ps);
@@ -212,6 +212,33 @@ static void init_syscall(void) {
   register_syscall(SYSCALL_MBOX_CLOSE, mailbox_close);
   register_syscall(SYSCALL_MBOX_SEND, mailbox_send);
   register_syscall(SYSCALL_MBOX_RECV, mailbox_recv);
+  register_syscall(SYSCALL_SHM_GET, shm_get);
+  register_syscall(SYSCALL_SHM_DT, shm_dt);
+}
+
+static void init_sched_pcb() {
+  for (int i = 0; i < NR_CPUS; i++) {
+    sched_tcb[i].status = TASK_READY;
+    sched_tcb[i].cpuid = i;
+    sched_tcb[i].cursor_x = 0;
+    sched_tcb[i].cursor_y = i;
+    sched_tcb[i].kstack = kmalloc();
+    sched_tcb[i].trapframe = KPTR(regs_context_t, kmalloc());
+    sched_tcb[i].ctx = &sched_ctx[i];
+    sched_tcb[i].status = TASK_RUNNING;
+    sched_tcb[i].current_queue = NULL;
+    sched_tcb[i].trapframe->kernel_sp = ADDR(sched_tcb[i].kstack) + PAGE_SIZE;
+    sched_tcb[i].trapframe->sstatus = SR_SPIE;
+    sched_tcb[i].trapframe->sepc = USER_ENTRYPOINT_UVA;
+    sched_tcb[i].ctx->ra = (uint64_t)user_trap_ret;
+    sched_tcb[i].ctx->sp = ADDR(sched_tcb[i].kstack) + PAGE_SIZE;
+    sched_tcb[i].pcb = &sched_pcb[i];
+    spin_lock_init(&sched_tcb[i].lock);
+    spin_lock_init(&sched_pcb[i].lock);
+    sched_pcb[i].status = PROC_ACTIVATE;
+    sched_pcb[i].num_threads = sched_pcb[i].tid_mask = 1;
+    sched_pcb[i].threads = (list_node_t){&sched_tcb[i].thread_list, &sched_tcb[i].thread_list};
+  }
 }
 
 /************************************************************/
@@ -220,7 +247,7 @@ static void init_syscall(void) {
 
 static void init_task_info(void) {
   bios_putstr("initing tasks...\n\r");
-  meta_offset = *(uint32_t*)(META_OFFSET_ADDR);
+  meta_offset = *(uint32_t*)META_OFFSET_KVA;
   uint32_t ptr = meta_offset;
   tasknum = readint_img(ptr);
   ptr += 4;
@@ -230,23 +257,30 @@ static void init_task_info(void) {
     bios_putstr("warning: no available tasks!\n\r");
     return;
   }
-  for (int i = 0; i < tasknum; i++, ptr += 8) {
+  for (int i = 0; i < tasknum; i++, ptr += sizeof(task_info_t)) {
     tasks[i].offset = readint_img(ptr);
     tasks[i].name_offset = readint_img(ptr + 4);
+    tasks[i].memsz = readint_img(ptr + 8);
   }
   name_region_offset = tasks[0].name_offset;
   if (ptr != name_region_offset) init_panic("user image corrupted!\n\r");
 }
 
+static spin_lock_t temp_map_lock;
+static bool temp_map_cleared = false;
+
+extern void enable_kvm4bios(void);
 int main(void) {
   if (mycpuid() == 0) {
     int check = bss_check();
     if (!check) init_panic("bss check failed!\n\r");
-    initMemoryAllocator();
+    enable_kvm4bios();
+    init_memory();
     smp_init();
     // Init jump table provided by kernel and bios(ΦωΦ)
     init_jmptab();
     // Init task information (〃'▽'〃)
+    init_sched_pcb();
     init_task_info();
     init_pool();
     // Init lock mechanism o(´^｀)o
@@ -264,15 +298,30 @@ int main(void) {
     // Read CPU frequency (｡•ᴗ-)_
     // assume the two harts have the same frequency
     time_base = bios_read_fdt(TIMEBASE);
-    init_pcb();
+    spin_lock_init(&temp_map_lock);
     wakeup_other_hart();
-  } else
+  } else {
     init_exception();
+    kvm_unmap_early();
+    spin_lock_acquire(&temp_map_lock);
+    temp_map_cleared = true;
+    spin_lock_release(&temp_map_lock);
+  }
   // Init Process Control Blocks |•'-'•) ✧
   printk("CPU %d: Glory to mankind!\n", mycpuid());
   latency(2);
-
-  if (mycpuid() == 0) screen_clear();
+  if (mycpuid() == 0) {
+    screen_clear();
+    while (true) {
+      spin_lock_acquire(&temp_map_lock);
+      if (temp_map_cleared) {
+        spin_lock_release(&temp_map_lock);
+        break;
+      }
+      spin_lock_release(&temp_map_lock);
+    }
+    init_pcb();
+  }
   set_timer(time_base);
   w_sscratch((uint64_t)(mythread()->trapframe));
   while (1) {
@@ -281,6 +330,5 @@ int main(void) {
     enable_preempt();
     asm volatile("wfi");
   }
-
   return 0;
 }

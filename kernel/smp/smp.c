@@ -16,8 +16,6 @@ void smp_init()
         cpus[i].current_running = &sched_tcb[i];
         cpus[i].sched_ctx = &sched_ctx[i];
         cpus[i].sleep_queue = (list_node_t){ &cpus[i].sleep_queue, &cpus[i].sleep_queue };
-        cpus[i].current_running->trapframe = (regs_context_t*)allocKernelPage(1);
-        cpus[i].current_running->trapframe->kernel_sp = cpus[i].current_running->kernel_sp + PAGE_SIZE;
     }
 }
 

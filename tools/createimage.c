@@ -2,6 +2,7 @@
 #include <elf.h>
 #include <errno.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,6 +27,7 @@
 typedef struct {
   uint32_t offset;
   uint32_t name_offset;
+  uint32_t memsz;
 } task_info_t;
 
 #define TASK_MAXNUM 32
@@ -218,6 +220,8 @@ static void create_image(int nfiles, char *files[])
             if (phdr.p_type != PT_LOAD) continue;
             /* write segment to the image */
             write_segment(phdr, fp, img, &phyaddr);
+            if (taskidx >= 0)
+                taskinfo[taskidx].memsz += get_memsz(phdr);
             nbytes += get_filesz(phdr);
         }
         /* write padding bytes */
@@ -353,7 +357,6 @@ static void write_padding_bootblock(FILE *img, int *phyaddr, int nbytes_kernel) 
     }
 }
 
-
 /* The user applications are stored as follows:
  * Task 1
  * Task 2
@@ -363,11 +366,14 @@ static void write_padding_bootblock(FILE *img, int *phyaddr, int nbytes_kernel) 
  * #tasks        ------------- 4 bytes
  * offset 1      ------------- 4 bytes
  * name_offset 1 ------------- 4 bytes
+ * memsz 1       ------------- 4 bytes
  * offset 2
  * name_offset 2
+ * memsz 2
  * ...
  * offset n
  * name offset n
+ * memsz n
  * name 1
  * name 2
  * ...
@@ -398,8 +404,8 @@ static void write_img_info(int nbytes_kernel, task_info_t *taskinfo, char* files
     printf("%d user tasks\n", tasknum);
     uint32_t name_region_offset = taskinfo[0].name_offset;
     for (int i = 0; i < tasknum; i++) {
-        printf("The elf of task %d starts at offset 0x%hx\n", i, taskinfo[i].offset);
-        printf("The name of task %d starts at offset 0x%hx\n", i, taskinfo[i].name_offset);
+        printf("The elf of task %d starts at offset 0x%x\n", i, taskinfo[i].offset);
+        printf("The name of task %d starts at offset 0x%x\n", i, taskinfo[i].name_offset);
     }
     for (char* p = (char*)taskinfo; phyaddr < name_region_offset; phyaddr++, p++)
         fputc(*p, img);

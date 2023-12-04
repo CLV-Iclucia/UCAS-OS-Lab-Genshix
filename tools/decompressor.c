@@ -5,7 +5,7 @@
 #include <type.h>
 #include <common.h>
 
-#define KERNEL_ENTRY_POINT 0x50201000
+#define KERNEL_ENTRY_POINT 0x50202000
 #define SECTOR_SIZE 512
 #define SECTOR_OFFSET(loc) ((loc) & (SECTOR_SIZE - 1))
 #define SECTOR_IDX(loc) ((loc) >> 9)

@@ -113,7 +113,7 @@ void fill_buffer()
 
 void recv_thread(void *arg)
 {
-    char id = (unsigned long) arg;
+    char id = *(char*)arg;
     int position = output_position(id, 1);
     char recv_buf[MAX_MBOX_LENGTH] = {0};
     int mq = sys_mbox_open(my_mailbox_id);
@@ -148,7 +148,7 @@ void recv_thread(void *arg)
 
 void send_thread(void *arg)
 {
-    char id = (unsigned long) arg;
+    char id = *(char*)arg;
     int position = output_position(id, 0);
     int i, len, target = 0;
     long bytes[2] = {0};
@@ -207,10 +207,12 @@ int main(int argc, char* argv[])
 
     for(;;){
         pthread_t recv;
-        pthread_create(&recv, recv_thread, (void*)(unsigned long)id);
-
+        if (pthread_create(&recv, NULL, recv_thread, &id) != 0) {
+            // TODO: perror
+        }
+        printf("thread recv(%d) created\n", recv);
         // use this thread as send thread
-        send_thread((void*)(unsigned long)id);
+        send_thread(&id);
 
         pthread_join(recv);
     }

@@ -35,12 +35,14 @@
 #include <os/list.h>
 #include <os/lock.h>
 #include <os/mm.h>
+#include <pgtable.h>
 #include <type.h>
 #include <assert.h>
 
 #define NUM_MAX_TASK 32
 #define NAME_MAXLEN 16
 #define NUM_MAX_THREADS NUM_MAX_TASK * 4
+#define NUM_MAX_THREADS_PER_TASK 64
 
 // constraints for a valid trapframe:
 // 1. sepc, ra and sp must be aligned and within valid ranges
@@ -146,12 +148,14 @@ typedef struct pcb {
   // 2. threads cannot be broken
   list_node_t threads;
   int num_threads;
+  uint64_t tid_mask;
+  uint64_t filesz;
   uint64_t size;          
   proc_status_t status;
   spin_lock_t wait_lock;
   list_node_t wait_queue;
   struct pcb *parent;     // read only
-  ptr_t addr;             // read only
+  PTE* pgdir;              // read only
   /* process id */
   pid_t pid;              // read only
   uint32_t taskset;
@@ -160,8 +164,10 @@ typedef struct pcb {
 /* Thread Control Block */
 typedef struct tcb {
   regs_context_t *trapframe;
-  reg_t kernel_sp;
-  reg_t user_sp;
+  kva_t kstack; // the bottom of the stack!
+  // the uva of ustack can be calculated by STACK_TOP_UVA - (tid + 1) * PAGE_SIZE
+  // so we store the kva of ustack here
+  kva_t ustack; // the bottom of the stack!
   spin_lock_t lock;
 
   // constraints for the two lists: cannot be broken
@@ -182,7 +188,7 @@ typedef struct tcb {
   uint8_t cpuid;
 } tcb_t;
 
-typedef uint64_t thread_t;
+typedef uint32_t thread_t;
 
 #define offsetof(type, member) ((size_t)(&((type *)0)->member))
 #define HOLD_LOCK(thread, idx) ((thread)->lock_bitmask & LOCK_MASK(idx)) // must be called with lock held
@@ -226,8 +232,10 @@ void do_block(list_node_t *, list_head *queue, spin_lock_t *queue_lock);
 void do_unblock(list_node_t *);
 tcb_t *alloc_tcb();
 pcb_t *alloc_pcb();
-tcb_t *new_tcb(pcb_t *p, ptr_t entry);
-pcb_t *new_pcb(const char *name, ptr_t entry);
+tcb_t *new_tcb(pcb_t *p, uva_t entry_uva);
+pcb_t *new_pcb(const char *name);
+int kill_pcb(pcb_t *p);
+int kill_tcb(tcb_t *t);
 
 extern int free_tcb(tcb_t *t);
 
@@ -286,11 +294,35 @@ static inline tcb_t* ready_queue_pop() {
   return t;
 }
 
-
-
 static inline pcb_t* get_pcb(int pid) {
   assert(pid != -1);
   return pcb + pid - 1;
+}
+
+static inline bool is_valid_uva(uva_t uva, pcb_t *p) {
+  spin_lock_acquire(&p->lock);
+  bool valid = uva.addr >= USER_ENTRYPOINT_UVA;
+  spin_lock_release(&p->lock);
+  return valid;
+}
+
+static inline uint64_t argraw(int n) {
+  regs_context_t *r = mythread()->trapframe;
+  assert(n >= 0 && n < 6);
+  switch(n) {
+    case 0: return r->a0();
+    case 1: return r->a1();
+    case 2: return r->a2();
+    case 3: return r->a3();
+    case 4: return r->a4();
+    case 5: return r->a5();
+  }
+  return -1;
+}
+
+static inline int argint(int n, int *ip) {
+  *ip = argraw(n);
+  return 0;
 }
 
 void insert_tcb(list_head *queue, tcb_t *tcb);
@@ -300,6 +332,7 @@ void dump_pcb(pcb_t *p);
 void do_thread_create(void);
 void do_thread_exit(void);
 void do_thread_yield(void);
+void do_thread_join(void);
 /************************************************************/
 /* Do not touch this comment. Reserved for future projects. */
 /* TODO [P3-TASK1] exec exit kill waitpid ps*/

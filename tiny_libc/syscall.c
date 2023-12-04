@@ -87,7 +87,7 @@ void sys_strace(uint64_t strace_bitmask) {
 }
 
 int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
-                   void *(*start_routine)(void *), void *arg) {
+                   void (*start_routine)(void *), void *arg) {
   return invoke_syscall(SYSCALL_THREAD_CREATE, (long)thread, (long)attr,
                         (long)start_routine, (long)arg, IGNORE);
 }
@@ -101,8 +101,13 @@ void pthread_exit(void *retval) {
                  IGNORE);
 }
 
+int pthread_join(pthread_t thread) {
+  return invoke_syscall(SYSCALL_THREAD_JOIN, (long)thread, IGNORE, IGNORE,
+                 IGNORE, IGNORE);
+}
+
 pid_t sys_exec(char *name, int argc, char **argv) {
-  invoke_syscall(SYSCALL_EXEC, (long)name, argc, (long)argv, IGNORE, IGNORE);
+  return invoke_syscall(SYSCALL_EXEC, (long)name, argc, (long)argv, IGNORE, IGNORE);
 }
 
 void sys_exit(void) {
@@ -203,4 +208,17 @@ int sys_mbox_recv(int mbox_idx, void *msg, int msg_length) {
 void sys_taskset(int pid, uint32_t core_id) {
   invoke_syscall(SYSCALL_TASKSET, pid, core_id, IGNORE, IGNORE, IGNORE);
 }
+
+void* sys_shmpageget(int key)
+{
+    /* TODO: [p4-task4] call invoke_syscall to implement sys_shmpageget */
+    invoke_syscall(SYSCALL_SHM_GET, key, IGNORE, IGNORE, IGNORE, IGNORE);
+}
+
+void sys_shmpagedt(void *addr)
+{
+    /* TODO: [p4-task4] call invoke_syscall to implement sys_shmpagedt */
+    invoke_syscall(SYSCALL_SHM_DT, (long)addr, IGNORE, IGNORE, IGNORE, IGNORE);
+}
+
 /************************************************************/

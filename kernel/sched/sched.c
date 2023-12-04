@@ -9,6 +9,7 @@
 #include <os/smp.h>
 #include <os/string.h>
 #include <os/time.h>
+#include <pgtable.h>
 #include <printk.h>
 #include <screen.h>
 #include <sys/syscall.h>
@@ -21,60 +22,8 @@ tcb_t tcb[NUM_MAX_THREADS];
 switchto_context_t swtch_ctx[NUM_MAX_THREADS];
 switchto_context_t sched_ctx[NR_CPUS];
 
-tcb_t sched_tcb[NR_CPUS] = {
-    {
-        .status = TASK_READY,
-        .tid = 0,
-        .kernel_sp = (ptr_t)(FREEMEM_KERNEL - 2 * PAGE_SIZE),
-        .ctx = &sched_ctx[0],
-        .cursor_x = 0,
-        .cursor_y = 0,
-        .lock =
-            {
-                .status = UNLOCKED,
-            },
-        .pcb = &sched_pcb[0],
-    },
-    {
-        .status = TASK_READY,
-        .tid = 0,
-        .kernel_sp = (ptr_t)(FREEMEM_KERNEL - PAGE_SIZE),
-        .ctx = &sched_ctx[1],
-        .cursor_x = 0,
-        .cursor_y = 1,
-        .lock =
-            {
-                .cpuid = -1,
-                .status = UNLOCKED,
-            },
-        .pcb = &sched_pcb[1],
-    }};
-pcb_t sched_pcb[NR_CPUS] = {{
-                                .status = PROC_ACTIVATE,
-                                .pid = 0,
-                                .num_threads = 1,
-                                .threads =
-                                    {
-                                        .next = &(sched_tcb[0].thread_list),
-                                        .prev = &(sched_tcb[0].thread_list),
-                                    },
-                                .lock =
-                                    {
-                                        .status = UNLOCKED,
-                                    },
-                            },
-                            {.status = PROC_ACTIVATE,
-                             .pid = 0,
-                             .num_threads = 1,
-                             .threads =
-                                 {
-                                     .next = &(sched_tcb[1].thread_list),
-                                     .prev = &(sched_tcb[1].thread_list),
-                                 },
-                             .lock = {
-                                 .cpuid = -1,
-                                 .status = UNLOCKED,
-                             }}};
+tcb_t sched_tcb[NR_CPUS];
+pcb_t sched_pcb[NR_CPUS];
 
 static int pcb_pool_queue[NUM_MAX_TASK];
 static int pcb_pool_queue_head = 0;
@@ -133,6 +82,25 @@ static void push_pcb(pcb_t *p) {
   spin_lock_release(&pcb_pool_lock);
 }
 
+static uint8_t alloc_tid(pcb_t *p) {
+  assert(spin_lock_holding(&p->lock));
+  for (int i = 0; i < NUM_MAX_THREADS_PER_TASK; i++) {
+    if ((p->tid_mask & (1 << i)) == 0) {
+      p->tid_mask &= ~(1 << i);
+      return i;
+    }
+  }
+  return -1;
+}
+
+uva_t ustack_btm_uva(tcb_t *t) {
+  return UVA(STACK_TOP_UVA - PAGE_SIZE * (t->tid + 1));
+}
+
+uva_t ustack_top_uva(tcb_t *t) {
+  return UVA(STACK_TOP_UVA - PAGE_SIZE * t->tid);
+}
+
 // must be called with the lock of pcb held
 // this function will return with the lock of the new tcb HELD!
 // 1. alloc new tcb and acquire the lock of the new tcb
@@ -140,25 +108,31 @@ static void push_pcb(pcb_t *p) {
 // 2. acquire the lock of the ready queue
 // 3. release the lock of the ready queue
 // note: this will not put the tcb to running, and will not set the args!
-tcb_t *new_tcb(pcb_t *p, ptr_t entry) {
+// the mapping of entry_pa is handled by pcb
+tcb_t *new_tcb(pcb_t *p, uva_t entry_uva) {
   assert(spin_lock_holding(&p->lock));
+  uint8_t new_tid = alloc_tid(p);
+  if (new_tid == (uint8_t)(-1)) return NULL;
   tcb_t *t = alloc_tcb();
   if (t == NULL) return NULL;
   spin_lock_init(&t->lock);
   spin_lock_acquire(&(t->lock));
   t->ctx = swtch_ctx + (t - tcb);
-  t->tid = p->num_threads++;
   t->lock_bitmask = 0;
   t->wakeup_time = 0;
-  t->kernel_sp = allocKernelPage(1);
-  t->trapframe = (regs_context_t *)allocKernelPage(1);
-  t->user_sp = allocUserPage(1);
-  t->trapframe->kernel_sp = t->kernel_sp + PAGE_SIZE;
+  t->kstack = kmalloc();
+  t->trapframe = KPTR(regs_context_t, kmalloc());
+  t->tid = new_tid;
+  p->num_threads++;
+  p->tid_mask |= (1 << new_tid);
+  t->ustack = kmalloc();
+  uvmmap(ustack_btm_uva(t), kva2pa(t->ustack), p->pgdir, PTE_R | PTE_W | PTE_U);
+  t->trapframe->kernel_sp = ADDR(t->kstack) + PAGE_SIZE;
   t->trapframe->sstatus = SR_SPIE;
-  t->trapframe->sp() = t->user_sp + PAGE_SIZE;
-  t->trapframe->sepc = entry;
+  t->trapframe->sp() = ADDR(ustack_btm_uva(t)) + PAGE_SIZE;
+  t->trapframe->sepc = ADDR(entry_uva);
   t->ctx->ra = (uint64_t)user_trap_ret;
-  t->ctx->sp = t->kernel_sp + PAGE_SIZE;
+  t->ctx->sp = ADDR(t->kstack) + PAGE_SIZE;
   t->pcb = p;
   t->cpuid = -1;
   t->list.next = t->list.prev = &(t->list);
@@ -169,25 +143,34 @@ tcb_t *new_tcb(pcb_t *p, ptr_t entry) {
 
 // no need to hold lock, this can be done atomically
 // but will exit with the lock of the pcb HELD!
-pcb_t *new_pcb(const char *name, ptr_t entry) {
+// entry must be loaded
+pcb_t *new_pcb(const char *name) {
   pcb_t *p = alloc_pcb();
   if (p == NULL) {
     printl("Error: PCB is full!\n");
     return NULL;
   }
+  pa_t load_pa = load_task_by_name(name, 0);
+  p->size = get_task_memsz(name);
+  p->filesz = get_task_filesz(name);
   spin_lock_init(&(p->lock));
   spin_lock_init(&(p->wait_lock));
   spin_lock_acquire(&p->lock);
+  p->pgdir = new_pgdir();
+  // usually speaking, the mapping kva(starting with 0xffffffc) is not
+  // overlapped with the uva
+  share_pgtable(KVA(p->pgdir), KVA(PGDIR_KVA));
   p->pid = p - pcb + 1;
   p->status = PROC_ACTIVATE;
   strcpy(p->name, name);
-  p->num_threads = 0;
+  p->num_threads = p->tid_mask = 0;
   p->threads.next = p->threads.prev = &(p->threads);
   p->wait_queue.next = p->wait_queue.prev = &(p->wait_queue);
-  p->addr = entry;
   p->parent = myproc();
   p->taskset = p->parent->taskset;
-  tcb_t *nt = new_tcb(p, entry);
+  uvmmap(UVA(USER_ENTRYPOINT_UVA), load_pa, p->pgdir,
+         PTE_R | PTE_W | PTE_X | PTE_U);
+  tcb_t *nt = new_tcb(p, UVA(USER_ENTRYPOINT_UVA));
   if (nt == NULL) return NULL;
   spin_lock_release(&nt->lock);
   return p;
@@ -207,9 +190,11 @@ int free_tcb(tcb_t *t) {
   assert_msg(t != &sched_tcb[mycpuid()], "freeing the scheduler thread.");
   LIST_REMOVE(&(t->thread_list));
   p->num_threads--;
-  freeKernelPage((ptr_t)t->trapframe);
-  freeKernelPage((ptr_t)t->kernel_sp);
-  freeUserPage((ptr_t)t->user_sp);
+  p->tid_mask &= ~(1 << t->tid);
+  // vmfree(p->pgdir, ADDR(ustack_uva(t)));
+  uvmunmap(p->pgdir, ustack_btm_uva(t));
+  uvmunmap(p->pgdir, UVA(ADDR(t->kstack)));
+  uvmunmap(p->pgdir, UVA(t->trapframe));
   spin_lock_release(&t->lock);
   // it is fine here, since at this time the status is already TASK_EXITED
   push_tcb(t);
@@ -234,8 +219,7 @@ int kill_pcb(pcb_t *p) {
     spin_lock_release(&p->wait_lock);
     return 0;
   }
-  while (!LIST_EMPTY(p->wait_queue))
-    do_unblock(LIST_FIRST(p->wait_queue));
+  while (!LIST_EMPTY(p->wait_queue)) do_unblock(LIST_FIRST(p->wait_queue));
   spin_lock_release(&p->wait_lock);
   return 0;
 }
@@ -249,7 +233,10 @@ int kill_tcb(tcb_t *t) {
 void free_pcb(pcb_t *p) {
   assert(spin_lock_holding(&p->lock));
   assert(LIST_EMPTY(p->threads) && p->num_threads == 0);
-  freeUserPages(p->addr, p->size);
+  for (uint64_t uva = USER_ENTRYPOINT_UVA; uva < USER_ENTRYPOINT_UVA + p->size;
+       uva += PAGE_SIZE)
+    uvmunmap(p->pgdir, UVA(uva));
+  uvmclear(p->pgdir, 2);
   spin_lock_release(&p->lock);
   push_pcb(p);
 }
@@ -284,6 +271,7 @@ void do_scheduler(void) {
     spin_lock_release(&t->lock);
     spin_lock_release(&p->lock);
     c->timer_needs_reset = true;
+    switch_pgdir(p->pid, kva2pa(KVA(p->pgdir)));
     switch_to(c->sched_ctx, t->ctx);
   }
 }
@@ -356,25 +344,41 @@ void do_unblock(list_node_t *tcb_node) {
   spin_lock_release(&t->lock);
 }
 
+static pa_t handle_uva_args(pcb_t *p, uva_t uva) {
+  spin_lock_acquire(&p->lock);
+  pa_t pa = uvmwalk(uva, p->pgdir, 0);
+  spin_lock_release(&p->lock);
+  if (ADDR(pa) == 0) handle_pgfault(NULL, ADDR(uva), 0);
+  return pa;
+}
+
 void do_thread_create() {
   tcb_t *t = mythread();
   pcb_t *p = t->pcb;
-  ptr_t thread_ptr = argraw(0);
-  ptr_t thread_attr_ptr = argraw(1);
-  ptr_t routine_ptr = argraw(2);
-  ptr_t arg_ptr = argraw(3);
+  uva_t thread_uva = UVA(argraw(0));
+  uva_t thread_attr_uva = UVA(argraw(1));
+  uva_t routine_uva = UVA(argraw(2));
+  uva_t arg_uva = UVA(argraw(3));
+  pa_t thread_pa = PA(NULL), thread_attr_pa = PA(NULL), routine_pa = PA(NULL),
+       arg_pa = PA(NULL);
+  thread_pa = handle_uva_args(p, thread_uva);
+  if (ADDR(thread_attr_uva))
+    thread_attr_pa = handle_uva_args(p, thread_attr_uva);
+  routine_pa = handle_uva_args(p, routine_uva);
+  if (ADDR(arg_uva))
+    arg_pa = handle_uva_args(p, arg_uva);
   spin_lock_acquire(&p->lock);
-  tcb_t *nt = new_tcb(p, routine_ptr);
+  tcb_t *nt = new_tcb(p, routine_uva);
   if (nt == NULL) {
+    spin_lock_release(&p->lock);
     t->trapframe->a0() = -1;
     return;
   }
-  nt->status = TASK_READY;
-  ready_queue_insert(nt);
-  nt->trapframe->a0() = arg_ptr;
+  prepare_sched(nt);
+  nt->trapframe->a0() = ADDR(arg_uva);
   spin_lock_release(&nt->lock);
   spin_lock_release(&p->lock);
-  *(thread_t *)thread_ptr = nt - tcb;
+  *UPTR(thread_t, thread_uva) = nt - tcb;
   t->trapframe->a0() = 0;
   return;
 }
@@ -396,8 +400,41 @@ void do_thread_exit() {
   if ((int *)retval != NULL) *(int *)retval = 0;
 }
 
+void do_thread_join() {
+  tcb_t* t = mythread();
+  pcb_t* p = myproc();
+  
+}
+
+static void prepare_ustack(tcb_t *t, int argc, char **argv) {
+  assert(is_kva(t->trapframe));
+  assert(t->trapframe->sp() ==
+         ADDR(ustack_top_uva(t)) - (argc + 1) * sizeof(ptr_t));
+  uint64_t psp = ADDR(t->ustack) + PAGE_SIZE - (argc + 1) * sizeof(ptr_t);
+  uint64_t usp = t->trapframe->sp();
+  assert(psp != 0);
+  char **argv_ptr = (char **)psp;
+  for (int i = 0; i < argc; i++) {
+    // put argv on to the stack
+    int len = strlen(argv[i]);
+    psp -= len + 1;
+    usp -= len + 1;
+    strcpy((char *)psp, argv[i]);
+    argv_ptr[i] = (char *)usp;
+  }
+  argv_ptr[argc] = NULL;
+  // alignment: align the stack to 16 byte, padding with 0
+  while ((psp & 15) != 0) {
+    psp--;
+    usp--;
+    *(char *)(psp) = 0;
+  }
+  t->trapframe->sp() = usp;
+}
+
 void do_exec(void) {
   tcb_t *t = mythread();
+  pcb_t *p = t->pcb;
   char *prog = (char *)argraw(0);
   int argc;
   if (argint(1, &argc) == -1) {
@@ -405,33 +442,23 @@ void do_exec(void) {
     return;
   }
   char **argv = (char **)argraw(2);
-  pcb_t *np = new_pcb(prog, (ptr_t)load_task_by_name(prog));
+  if (!is_valid_uva(UVA(prog), p) || !is_valid_uva(UVA(argv), p)) {
+    t->trapframe->a0() = -1;
+    return;
+  }
+  pcb_t *np = new_pcb(prog);
   if (np == NULL) {
     t->trapframe->a0() = -1;
     return;
   }
   tcb_t *nt = main_thread(np);
   spin_lock_release(&np->lock);
+  assert(ADDR(ustack_top_uva(nt)) == nt->trapframe->sp());
   t->trapframe->a0() = np->pid;
   nt->trapframe->a0() = argc;
   nt->trapframe->sp() -= (argc + 1) * sizeof(ptr_t);
-  uint64_t sp = nt->trapframe->sp();
-  char **argv_ptr = (char **)sp;
-  for (int i = 0; i < argc; i++) {
-    // put argv on to the stack
-    int len = strlen(argv[i]);
-    sp -= len + 1;
-    strcpy((char *)sp, argv[i]);
-    argv_ptr[i] = (char *)sp;
-  }
-  argv_ptr[argc] = NULL;
-  nt->trapframe->a1() = (uint64_t)argv_ptr;
-  // alignment: align the stack to 16 byte, padding with 0
-  while ((sp & 15) != 0) {
-    sp--;
-    *(char *)(sp) = 0;
-  }
-  nt->trapframe->sp() = sp;
+  nt->trapframe->a1() = nt->trapframe->sp();
+  prepare_ustack(nt, argc, (char **)argv);
   spin_lock_acquire(&nt->lock);
   prepare_sched(nt);
   spin_lock_release(&nt->lock);
@@ -481,10 +508,11 @@ void do_ps() {
     assert(pcb[i].num_threads > 0);
     uint8_t cpuid = main_thread(&pcb[i])->cpuid;
     spin_lock_release(&pcb[i].lock);
-    if (cpuid == (uint8_t)-1) {
+    if (cpuid == (uint8_t)-1)
       printk("pid: %d, name: %s, not running\n", pcb[i].pid, pcb[i].name);
-    } else
-      printk("pid: %d, name: %s, running on cpu %d\n", pcb[i].pid, pcb[i].name, cpuid);
+    else
+      printk("pid: %d, name: %s, running on cpu %d\n", pcb[i].pid, pcb[i].name,
+             cpuid);
   }
 }
 

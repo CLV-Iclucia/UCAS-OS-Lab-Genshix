@@ -34,5 +34,4 @@ static inline void _panic_msg(const char* file_name,int lineno, const char* func
             _panic_msg(__FILE__, __LINE__,__FUNCTION__,msg); \
         }                                            \
     }
-
 #endif /* ASSERT_H */

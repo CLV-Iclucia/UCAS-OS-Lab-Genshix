@@ -9,7 +9,7 @@
 .equ bios_func_entry, 0x50150000
 .equ decompressor_offset, 0x1000
 .equ decompressor_loc, 0x54000000
-.equ kernel, 0x52002000
+.equ kernel, 0x50202000
 .equ decompressor_stack, 0x50500000
 
 .text
