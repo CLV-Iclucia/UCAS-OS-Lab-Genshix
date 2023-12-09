@@ -193,8 +193,8 @@ int free_tcb(tcb_t *t) {
   p->tid_mask &= ~(1 << t->tid);
   // vmfree(p->pgdir, ADDR(ustack_uva(t)));
   uvmunmap(p->pgdir, ustack_btm_uva(t));
-  uvmunmap(p->pgdir, UVA(ADDR(t->kstack)));
-  uvmunmap(p->pgdir, UVA(t->trapframe));
+  kfree(t->kstack);
+  kfree(KVA(t->trapframe));
   spin_lock_release(&t->lock);
   // it is fine here, since at this time the status is already TASK_EXITED
   push_tcb(t);

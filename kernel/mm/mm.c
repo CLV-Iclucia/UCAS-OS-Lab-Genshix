@@ -86,7 +86,6 @@ void kfree(kva_t kva) {
   page->prev = KVA((uint64_t)(&freemem_list));
   KPTR(physical_page_t, freemem_list.next)->prev = kva;
   freemem_list.next = kva;
-  memset(KPTR(void, kva), 5, PAGE_SIZE);
   spin_lock_release(&freemem_lock);
 }
 
@@ -95,8 +94,7 @@ kva_t kmalloc() {
   if (KPTR(physical_page_t, freemem_list.next) == &freemem_list) return KVA(-1);
   kva_t kva = freemem_list.next;
   freemem_list.next = KPTR(physical_page_t, kva)->next;
-  KPTR(physical_page_t, freemem_list.next)->prev =
-      KVA((uint64_t)(&freemem_list));
+  KPTR(physical_page_t, freemem_list.next)->prev = KVA((&freemem_list));
   memset(KPTR(void, kva), 5, PAGE_SIZE);
   spin_lock_release(&freemem_lock);
   return kva;
@@ -202,6 +200,10 @@ void uvmfree(pcb_t* p) {
 
 // must be called after freeing all the physical pages
 // free all levels of page table recursively
+// note: ref cnt is not used for this, ref cnt is only for USER MAPPED PHYSICAL PAGES
+// the main difference is that, the pages that need ref cnt are created in uvmmap
+// other pages are created by calling kmalloc directly
+// so when free these pages, we call kfree directly
 void uvmclear(PTE* pgdir, int level) {
   assert(is_kva(pgdir));
   if (level == 0) return;
@@ -212,7 +214,7 @@ void uvmclear(PTE* pgdir, int level) {
       pa_t pa = get_pa(pte);
       PTE* pgtbl = KPTR(PTE, pa2kva(pa));
       uvmclear(pgtbl, level - 1);
-      free_physical_page(pa);
+      kfree(pa2kva(pa));
     }
   }
 }
