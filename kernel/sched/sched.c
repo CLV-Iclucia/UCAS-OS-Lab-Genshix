@@ -101,6 +101,8 @@ uva_t ustack_top_uva(tcb_t *t) {
   return UVA(STACK_TOP_UVA - PAGE_SIZE * t->tid);
 }
 
+// the assembly code for this is in entry.S
+extern void _thread_exit();
 // must be called with the lock of pcb held
 // this function will return with the lock of the new tcb HELD!
 // 1. alloc new tcb and acquire the lock of the new tcb
@@ -117,6 +119,7 @@ tcb_t *new_tcb(pcb_t *p, uva_t entry_uva) {
   if (t == NULL) return NULL;
   spin_lock_init(&t->lock);
   spin_lock_acquire(&(t->lock));
+  spin_lock_init(&t->join_lock);
   t->ctx = swtch_ctx + (t - tcb);
   t->lock_bitmask = 0;
   t->wakeup_time = 0;
@@ -137,6 +140,7 @@ tcb_t *new_tcb(pcb_t *p, uva_t entry_uva) {
   t->cpuid = -1;
   t->list.next = t->list.prev = &(t->list);
   t->thread_list.next = t->thread_list.prev = &(t->thread_list);
+  t->join_queue.next = t->join_queue.prev = &(t->join_queue);
   LIST_INSERT_TAIL(&(p->threads), &(t->thread_list));
   return t;
 }
@@ -185,7 +189,7 @@ void insert_tcb(list_head *queue, tcb_t *tcb) {
 int free_tcb(tcb_t *t) {
   assert(running_on_scheduler());
   pcb_t *p = t->pcb;
-  assert(spin_lock_holding(&p->lock));
+  assert(spin_lock_holding(&p->lock) && spin_lock_holding(&t->lock));
   assert(t->current_queue == NULL);
   assert_msg(t != &sched_tcb[mycpuid()], "freeing the scheduler thread.");
   LIST_REMOVE(&(t->thread_list));
@@ -195,6 +199,14 @@ int free_tcb(tcb_t *t) {
   uvmunmap(p->pgdir, ustack_btm_uva(t));
   kfree(t->kstack);
   kfree(KVA(t->trapframe));
+  spin_lock_acquire(&t->join_lock);
+  while (!LIST_EMPTY(t->join_queue)) {
+    tcb_t *wt = list_thread(LIST_FIRST(t->join_queue));
+    // if the thread is already exited, the a0 of the trapframe should store the return value
+    wt->trapframe->a0() = t->trapframe->a0();
+    do_unblock(LIST_FIRST(t->join_queue));
+  } 
+  spin_lock_release(&t->join_lock);
   spin_lock_release(&t->lock);
   // it is fine here, since at this time the status is already TASK_EXITED
   push_tcb(t);
@@ -263,6 +275,7 @@ void do_scheduler(void) {
     if (t->status == TASK_EXITED) {
       free_tcb(t);
       if (p->num_threads == 0) free_pcb(p);
+      else spin_lock_release(&p->lock);
       continue;
     }
     t->status = TASK_RUNNING;
@@ -374,6 +387,8 @@ void do_thread_create() {
     t->trapframe->a0() = -1;
     return;
   }
+  // when the thread returns, we make the thread jump to 0 and trigger a page fault
+  nt->trapframe->ra() = 0;
   prepare_sched(nt);
   nt->trapframe->a0() = ADDR(arg_uva);
   spin_lock_release(&nt->lock);
@@ -389,21 +404,31 @@ void do_thread_yield(void) {
   t->trapframe->a0() = 0;
 }
 
-void do_thread_exit() {
+void do_thread_exit(void) {
   tcb_t *t = mythread();
-  ptr_t retval = argraw(0);
-  if (free_tcb(t) != 0) {
-    *(int *)retval = -1;
-    return;
-  }
-  do_scheduler();
-  if ((int *)retval != NULL) *(int *)retval = 0;
+  spin_lock_acquire(&t->lock);
+  kill_tcb(t);
+  sched(t);
 }
 
 void do_thread_join() {
   tcb_t* t = mythread();
-  pcb_t* p = myproc();
-  
+  thread_t tid;
+  if (argint(0, &tid) < 0) {
+    t->trapframe->a0() = -1;
+    return;
+  }
+  tcb_t* wt = tcb + tid;
+  spin_lock_acquire(&wt->lock);
+  if (wt->status == TASK_EXITED) {
+    spin_lock_release(&wt->lock);
+    t->trapframe->a0() = 0;
+    return;
+  }
+  spin_lock_release(&wt->lock);
+  spin_lock_acquire(&t->lock);
+  spin_lock_acquire(&wt->join_lock);
+  do_block(&t->list, &wt->join_queue, &wt->join_lock);
 }
 
 static void prepare_ustack(tcb_t *t, int argc, char **argv) {
@@ -535,4 +560,75 @@ void do_taskset() {
   p->taskset = mask;
   spin_lock_release(&p->lock);
   return;
+}
+
+tcb_t* copy_tcb(pcb_t* np, tcb_t* t) {
+  assert(spin_lock_holding(&np->lock));
+  tcb_t* nt = alloc_tcb();
+  if (nt == NULL) return NULL;
+  spin_lock_init(&nt->lock);
+  spin_lock_acquire(&nt->lock);
+  nt->ctx = swtch_ctx + (nt - tcb);
+  assert(t->lock_bitmask == 0);
+  nt->lock_bitmask = 0;
+  nt->wakeup_time = t->wakeup_time;
+  nt->kstack = kmalloc();
+  nt->trapframe = KPTR(regs_context_t, kmalloc());
+  *(nt->trapframe) = *(t->trapframe);
+  nt->ctx->ra = (uint64_t)user_trap_ret;
+  nt->ctx->sp = ADDR(t->kstack) + PAGE_SIZE;
+  nt->ustack = t->ustack;
+  nt->tid = 0;
+  nt->pcb = np;
+  nt->cpuid = -1;
+  nt->list.next = nt->list.prev = &(nt->list);
+  nt->thread_list.next = nt->thread_list.prev = &(nt->thread_list);
+  nt->join_queue.next = nt->join_queue.prev = &(nt->join_queue);
+  LIST_INSERT_TAIL(&(np->threads), &(nt->thread_list));
+  return nt;
+}
+
+pcb_t* copy_pcb(pcb_t* p, tcb_t* t) {
+  pcb_t* np = alloc_pcb();
+  if (np == NULL) return NULL;
+  spin_lock_init(&np->lock);
+  spin_lock_acquire(&np->lock);
+  np->pid = np - pcb + 1;
+  np->threads.next = np->threads.prev = &(np->threads);
+  tcb_t* nt = copy_tcb(np, t);
+  if (nt == NULL) goto bad;
+  np->pgdir = new_pgdir();
+  if (np->pgdir == NULL) goto bad;
+  np->size = p->size;
+  copy_pgdir(np->pgdir, p->pgdir, 2);
+  share_pgtable(KVA(np->pgdir), KVA(PGDIR_KVA));
+  np->status = PROC_ACTIVATE;
+  strcpy(np->name, p->name);
+  np->num_threads = 1;
+  np->tid_mask = (1 << (t->tid));
+  np->parent = p;
+  np->taskset = p->taskset;
+  return np;
+
+bad:
+  spin_lock_release(&p->lock); 
+  return NULL;
+}
+
+void do_fork() {
+  tcb_t* t = mythread();
+  pcb_t* p = t->pcb;
+  spin_lock_acquire(&p->lock);
+  pcb_t* np = copy_pcb(p, t);
+  if (np == NULL) {
+    spin_lock_release(&p->lock);
+    t->trapframe->a0() = -1;
+    return;
+  }
+  spin_lock_release(&p->lock);
+  tcb_t* nt = main_thread(np);
+  t->trapframe->a0() = np->pid;
+  spin_lock_release(&np->lock);
+  nt->trapframe->a0() = 0;
+  nt->trapframe->sepc += 4;
 }

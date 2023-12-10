@@ -1,5 +1,5 @@
-#include <os/list.h>
 #include <assert.h>
+#include <os/list.h>
 #include <os/lock.h>
 #include <os/mm.h>
 #include <os/sched.h>
@@ -200,14 +200,14 @@ void uvmfree(pcb_t* p) {
 
 // must be called after freeing all the physical pages
 // free all levels of page table recursively
-// note: ref cnt is not used for this, ref cnt is only for USER MAPPED PHYSICAL PAGES
-// the main difference is that, the pages that need ref cnt are created in uvmmap
-// other pages are created by calling kmalloc directly
-// so when free these pages, we call kfree directly
+// note: ref cnt is not used for this, ref cnt is only for USER MAPPED PHYSICAL
+// PAGES the main difference is that, the pages that need ref cnt are created in
+// uvmmap other pages are created by calling kmalloc directly so when free these
+// pages, we call kfree directly
 void uvmclear(PTE* pgdir, int level) {
   assert(is_kva(pgdir));
   if (level == 0) return;
-  uint32_t upper_bound = level == 2 ? VPN(KVA_START, 2) : 512;
+  uint32_t upper_bound = level == 2 ? KVA_VPN_2 : 512;
   for (int i = 0; i < upper_bound; i++) {
     PTE pte = pgdir[i];
     if ((pte & PTE_V) && !(pte & PTE_U)) {
@@ -279,9 +279,35 @@ void do_shm_get(void) {
   pcb_t* p = myproc();
   int key;
   if (argint(0, &key) < 0) {
-    return ;
+    return;
   }
-//  t->trapframe->a0() = shm_page_get(key);
+  //  t->trapframe->a0() = shm_page_get(key);
+}
+
+void copy_pgdir(PTE* npgdir, PTE* pgdir, int level) {
+  assert(is_kva(npgdir) && is_kva(pgdir));
+  int upper_bound = level == 2 ? KVA_VPN_2 : 512;
+  for (int i = 0; i < upper_bound; i++) {
+    PTE pte = pgdir[i];
+    if (!(pte & PTE_V)) continue;
+    PTE npte = npgdir[i];
+    pa_t pa = get_pa(pte);
+    PTE* pgtbl = KPTR(PTE, pa2kva(pa));
+    if (level) {
+      PTE* new_pgtbl = new_pgdir();
+      pa_t new_pgtbl_pa = kva2pa(KVA(new_pgtbl));
+      set_pfn(&npte, ADDR(new_pgtbl_pa) >> NORMAL_PAGE_SHIFT);
+      set_attribute(&npte, PTE_V);
+      copy_pgdir(new_pgtbl, pgtbl, level - 1);
+    } else {
+      set_pfn(&npte, ADDR(pa) >> NORMAL_PAGE_SHIFT);
+      if (pte & PTE_S) // do not copy shared pages
+        continue;
+      set_attribute(&npte, PTE_V | PTE_R | PTE_W | PTE_X | PTE_C);
+      set_attribute(&pte, PTE_V | PTE_R | PTE_W | PTE_X | PTE_C);
+      inc_ref_cnt(pa2kva(pa));
+    }
+  }
 }
 
 typedef struct shared_page_mapping {
@@ -293,9 +319,7 @@ spin_lock_t shared_page_lock;
 
 void do_shm_dt(void) {
   uint64_t addr = argraw(0);
- // shm_page_dt(addr);
+  // shm_page_dt(addr);
 }
 
-void shm_page_dt(uintptr_t addr) {
-
-}
+void shm_page_dt(uintptr_t addr) {}

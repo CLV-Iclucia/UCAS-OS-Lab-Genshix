@@ -4,8 +4,10 @@
 #include <os/mm.h>
 #include <os/sched.h>
 #include <os/smp.h>
+#include <os/string.h>
+#include <pgtable.h>
 
-void vmprint(PTE *pagetable) {
+void vmprint(PTE* pagetable) {
   static int dep = 0;
   if (!dep) printk("page table %lx\n", pagetable);
   int bound = dep == 0 ? 64 : 512;
@@ -30,17 +32,55 @@ void handle_segfault(pcb_t* p, tcb_t* t, uva_t fault_uva) {
   spin_lock_acquire(&p->lock);
   kill_pcb(p);
   spin_lock_release(&p->lock);
-  printk("Invalid uva access: %lx\nProcess %s has been killed. The fault instruction is %lx.",
-          ADDR(fault_uva), p->name, t->trapframe->sepc);
+  printk(
+      "Invalid uva access: %lx\nProcess %s has been killed. The fault "
+      "instruction is %lx.",
+      ADDR(fault_uva), p->name, t->trapframe->sepc);
   spin_lock_acquire(&t->lock);
   sched(t);
 }
 
-void handle_pgfault(regs_context_t *regs, uint64_t stval, uint64_t scause) {
+static PTE* get_pte(PTE* pgdir, uva_t uva) {
+  for (int level = 2; level > 0; level--) {
+    uint32_t vpn = VPN(ADDR(uva), level);
+    if (pgdir[vpn] & PTE_V) {
+      pa_t pa = get_pa(pgdir[vpn]);
+      pgdir = KPTR(PTE, pa2kva(pa));
+    } else
+      return NULL;
+  }
+  uint32_t vpn = VPN(PGROUNDDOWN(ADDR(uva)), 0);
+  return &pgdir[vpn];
+}
+
+static bool try_copy_on_write(pcb_t* p, uva_t fault_uva) {
+  bool success = false;
+  PTE* ppte = get_pte(p->pgdir, fault_uva);
+  if (ppte == NULL) return false;
+  if (*ppte & PTE_C) {
+    pa_t pa = get_pa(*ppte);
+    free_physical_page(pa);
+    kva_t nkva = kmalloc();
+    memcpy(KPTR(void, nkva), KPTR(void, pa2kva(pa)), PAGE_SIZE);
+    pa_t npa = kva2pa(nkva);
+    set_pfn(ppte, ADDR(npa) >> NORMAL_PAGE_SHIFT);
+    set_attribute(ppte, PTE_U | PTE_R | PTE_X | PTE_W);
+    success = true;
+  }
+  return success;
+}
+
+void handle_pgfault(regs_context_t* regs, uint64_t stval, uint64_t scause) {
   uva_t fault_uva = UVA(stval);
-  tcb_t *t = mythread();
-  pcb_t *p = myproc();
+  tcb_t* t = mythread();
+  pcb_t* p = myproc();
+  if (t->trapframe->sepc == 0 && stval == 0) {
+    t->trapframe->a0() = 0;
+    do_thread_exit();
+  }
   if (is_valid_uva(fault_uva, p)) {
+    if (scause == EXCC_STORE_PAGE_FAULT && try_copy_on_write(p, fault_uva))
+      return;
     // it is a valid uva, but not loaded
     // load on demand
     uint64_t offset = ADDR(fault_uva) - USER_ENTRYPOINT_UVA;
@@ -54,7 +94,7 @@ void handle_pgfault(regs_context_t *regs, uint64_t stval, uint64_t scause) {
     spin_lock_acquire(&p->lock);
     uvmmap(UVA(PGROUNDDOWN(stval)), pa, p->pgdir,
            PTE_R | PTE_W | PTE_X | PTE_U);
-  //  vmprint(p->pgdir);
+    //  vmprint(p->pgdir);
     spin_lock_release(&p->lock);
   } else
     handle_segfault(p, t, fault_uva);

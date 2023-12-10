@@ -91,4 +91,5 @@ void shm_page_dt(uintptr_t addr);
 void do_shm_get(void);
 void do_shm_dt(void);
 
+void copy_pgdir(PTE* dest, PTE* src, int level);
 #endif /* MM_H */

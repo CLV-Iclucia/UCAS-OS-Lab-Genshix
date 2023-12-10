@@ -169,6 +169,7 @@ static void init_syscall(void) {
   // TODO: [p2-task3] initialize system call table.
   register_syscall(SYSCALL_YIELD, yield);
   register_syscall(SYSCALL_SLEEP, sleep);
+  register_syscall(SYSCALL_FORK, fork);
   // syscall about screen
   register_syscall(SYSCALL_WRITE, write);
   register_syscall(SYSCALL_CURSOR, move_cursor);

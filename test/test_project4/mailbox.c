@@ -205,7 +205,7 @@ int main(int argc, char* argv[])
 
     fill_buffer();
 
-    for(;;){
+//    for(;;){
         pthread_t recv;
         if (pthread_create(&recv, NULL, recv_thread, &id) != 0) {
             // TODO: perror
@@ -215,7 +215,7 @@ int main(int argc, char* argv[])
         send_thread(&id);
 
         pthread_join(recv);
-    }
+//    }
 
     return 0;
 }

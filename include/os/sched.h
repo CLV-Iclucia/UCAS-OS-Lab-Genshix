@@ -169,10 +169,11 @@ typedef struct tcb {
   // so we store the kva of ustack here
   kva_t ustack; // the bottom of the stack!
   spin_lock_t lock;
-
+  spin_lock_t join_lock;
   // constraints for the two lists: cannot be broken
   list_node_t list; 
   list_node_t thread_list;
+  list_node_t join_queue; // the queue of threads waiting for this thread to exit
   list_node_t* current_queue;
   task_status_t status;
   // constraints: the tids of all threads in the same process must be unique
@@ -343,6 +344,7 @@ extern void do_waitpid(void);
 extern void do_ps(void);
 extern void do_getpid(void);
 extern void do_taskset(void);
+extern void do_fork(void);
 
 /************************************************************/
 

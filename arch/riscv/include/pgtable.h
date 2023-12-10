@@ -65,7 +65,8 @@ static inline void switch_kpgdir() {
   (1 << 6)                   /* Set by hardware on any access \
                               */
 #define PTE_D (1 << 7) /* Set by hardware on any write */
-#define PTE_S (1 << 8)  /* Reserved for software */
+#define PTE_S (1 << 8)  /* Reserved for software-shared */
+#define PTE_C (1 << 9) /* Copy on write bit */
 
 #define _PAGE_PFN_SHIFT 10lu
 
@@ -78,6 +79,7 @@ static inline void switch_kpgdir() {
 #define NORMAL_PAGE_ALIGNED(addr) (((addr) & (NORMAL_PAGE_SIZE - 1)) == 0)
 #define LARGE_PAGE_ALIGNED(addr) (((addr) & (LARGE_PAGE_SIZE - 1)) == 0)
 #define KVA_START 0xffffffc050000000lu
+#define KVA_VPN_2 VPN(KVA_START, 2)
 
 typedef uint64_t PTE;
 
@@ -165,6 +167,7 @@ static inline void clear_pgdir(pa_t pgdir_addr) {
 
 static inline PTE* new_pgdir() {
   PTE* pgdir = KPTR(PTE, kmalloc());
+  if (pgdir == NULL) return NULL;
   memset(pgdir, 0, NORMAL_PAGE_SIZE);
   return pgdir;
 }
