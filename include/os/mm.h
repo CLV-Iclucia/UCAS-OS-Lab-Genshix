@@ -91,5 +91,8 @@ void shm_page_dt(uintptr_t addr);
 void do_shm_get(void);
 void do_shm_dt(void);
 
-void copy_pgdir(PTE* dest, PTE* src, int level);
+void copy_pgdir(PTE* dest, PTE* src, uva_t from, uva_t to, int level);
+int copy_page(PTE* dest, PTE* src, uva_t uva);
+
+void inc_ref_cnt(kva_t kva);
 #endif /* MM_H */

@@ -122,6 +122,10 @@ int sys_waitpid(pid_t pid) {
   return invoke_syscall(SYSCALL_WAITPID, pid, IGNORE, IGNORE, IGNORE, IGNORE);
 }
 
+pid_t sys_fork(void) {
+  return invoke_syscall(SYSCALL_FORK, IGNORE, IGNORE, IGNORE, IGNORE, IGNORE);
+}
+
 void sys_ps(void) {
   invoke_syscall(SYSCALL_PS, IGNORE, IGNORE, IGNORE, IGNORE, IGNORE);
 }

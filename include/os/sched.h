@@ -41,7 +41,7 @@
 
 #define NUM_MAX_TASK 32
 #define NAME_MAXLEN 16
-#define NUM_MAX_THREADS NUM_MAX_TASK * 4
+#define NUM_MAX_THREADS (NUM_MAX_TASK * 4)
 #define NUM_MAX_THREADS_PER_TASK 64
 
 // constraints for a valid trapframe:
@@ -300,11 +300,24 @@ static inline pcb_t* get_pcb(int pid) {
   return pcb + pid - 1;
 }
 
+static inline uva_t ustack_btm_uva(tcb_t *t) {
+  return UVA(STACK_TOP_UVA - PAGE_SIZE * (t->tid + 1));
+}
+
+static inline uva_t ustack_top_uva(tcb_t *t) {
+  return UVA(STACK_TOP_UVA - PAGE_SIZE * t->tid);
+}
+
 static inline bool is_valid_uva(uva_t uva, pcb_t *p) {
   spin_lock_acquire(&p->lock);
   bool valid = uva.addr >= USER_ENTRYPOINT_UVA;
   spin_lock_release(&p->lock);
   return valid;
+}
+
+static inline bool is_within_stack(uva_t uva, tcb_t* t) {
+  uva_t ustack_btm = ustack_btm_uva(t);
+  return ADDR(uva) >= ADDR(ustack_btm) && ADDR(uva) < ADDR(ustack_btm) + PAGE_SIZE;
 }
 
 static inline uint64_t argraw(int n) {

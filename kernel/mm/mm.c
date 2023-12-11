@@ -48,7 +48,7 @@ static uint8_t get_ref_cnt(kva_t pa) {
   return cnt;
 }
 
-static void inc_ref_cnt(kva_t kva) {
+void inc_ref_cnt(kva_t kva) {
   spin_lock_acquire(&ref_cnt_lock);
   uint64_t offset = ADDR(kva) - FREEMEM_START_KVA;
   assert(offset % PAGE_SIZE == 0);
@@ -284,30 +284,58 @@ void do_shm_get(void) {
   //  t->trapframe->a0() = shm_page_get(key);
 }
 
-void copy_pgdir(PTE* npgdir, PTE* pgdir, int level) {
+void copy_pgdir(PTE* npgdir, PTE* pgdir, uva_t from, uva_t to, int level) {
   assert(is_kva(npgdir) && is_kva(pgdir));
-  int upper_bound = level == 2 ? KVA_VPN_2 : 512;
-  for (int i = 0; i < upper_bound; i++) {
+  int lower_bound = level == 2 ? VPN(ADDR(from), 2) : 0;
+  int upper_bound = level == 2 ? VPN(ADDR(to), 2) + 1 : 512;
+  for (int i = lower_bound; i < upper_bound; i++) {
     PTE pte = pgdir[i];
     if (!(pte & PTE_V)) continue;
     PTE npte = npgdir[i];
+    assert(!(npte & PTE_V));
     pa_t pa = get_pa(pte);
     PTE* pgtbl = KPTR(PTE, pa2kva(pa));
     if (level) {
       PTE* new_pgtbl = new_pgdir();
       pa_t new_pgtbl_pa = kva2pa(KVA(new_pgtbl));
-      set_pfn(&npte, ADDR(new_pgtbl_pa) >> NORMAL_PAGE_SHIFT);
-      set_attribute(&npte, PTE_V);
-      copy_pgdir(new_pgtbl, pgtbl, level - 1);
+      set_pfn(&npgdir[i], ADDR(new_pgtbl_pa) >> NORMAL_PAGE_SHIFT);
+      set_attribute(&npgdir[i], PTE_V);
+      copy_pgdir(new_pgtbl, pgtbl, from, to, level - 1);
     } else {
-      set_pfn(&npte, ADDR(pa) >> NORMAL_PAGE_SHIFT);
+      set_pfn(&npgdir[i], ADDR(pa) >> NORMAL_PAGE_SHIFT);
       if (pte & PTE_S) // do not copy shared pages
         continue;
-      set_attribute(&npte, PTE_V | PTE_R | PTE_W | PTE_X | PTE_C);
-      set_attribute(&pte, PTE_V | PTE_R | PTE_W | PTE_X | PTE_C);
+      set_attribute(&npgdir[i], PTE_V | PTE_U | PTE_R | PTE_X | PTE_C);
+      set_attribute(&pgdir[i], PTE_V | PTE_U | PTE_R | PTE_X | PTE_C);
       inc_ref_cnt(pa2kva(pa));
     }
   }
+}
+
+int copy_page(PTE* npgdir, PTE* pgdir, uva_t uva) {
+  for (int level = 2; level >= 0; level--) {
+    uint32_t vpn = VPN(ADDR(uva), level);
+    PTE pte = pgdir[vpn];
+    if (!(pte & PTE_V)) return -1;
+    pa_t pa = get_pa(pte);
+    PTE* pgtbl = KPTR(PTE, pa2kva(pa));
+    if (level) {
+      PTE* new_pgtbl = new_pgdir();
+      pa_t new_pgtbl_pa = kva2pa(KVA(new_pgtbl));
+      set_pfn(&npgdir[vpn], ADDR(new_pgtbl_pa) >> NORMAL_PAGE_SHIFT);
+      set_attribute(&npgdir[vpn], PTE_V);
+      npgdir = new_pgtbl;
+      pgdir = pgtbl;
+    } else {
+      set_pfn(&npgdir[vpn], ADDR(pa) >> NORMAL_PAGE_SHIFT);
+      if (pgdir[vpn] & PTE_S) // do not copy shared pages
+        continue;
+      set_attribute(&npgdir[vpn], PTE_V | PTE_R | PTE_U | PTE_X | PTE_C);
+      set_attribute(&pgdir[vpn], PTE_V | PTE_R | PTE_U | PTE_X | PTE_C);
+      inc_ref_cnt(pa2kva(pa));
+    }
+  }
+  return 0;
 }
 
 typedef struct shared_page_mapping {
@@ -322,4 +350,6 @@ void do_shm_dt(void) {
   // shm_page_dt(addr);
 }
 
-void shm_page_dt(uintptr_t addr) {}
+void shm_page_dt(uintptr_t addr) {
+  
+}

@@ -57,7 +57,8 @@ uint32_t get_task_filesz(const char* name) {
   for (int i = 0; i < tasknum; i++) {
     if (strcmp_img(name, tasks[i].name_offset) == 0) {
       uint64_t task_start = tasks[i].offset;
-      uint64_t task_end = i == tasknum - 1 ? name_region_offset : tasks[i - 1].offset;
+      uint64_t task_end = i == tasknum - 1 ? name_region_offset : tasks[i + 1].offset;
+      assert(task_end > task_start);
       return task_end - task_start;
     }
   }

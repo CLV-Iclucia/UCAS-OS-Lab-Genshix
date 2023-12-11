@@ -72,7 +72,8 @@ static inline void switch_kpgdir() {
 
 #define VA_MASK ((1lu << 39) - 1)
 #define PTE_MASK ((1lu << 54) - 1)
-
+#define ATTR_MASK ((1lu << 10) - 1)
+#define PFN_MASK (PTE_MASK & ~ATTR_MASK)
 
 #define PPN_BITS 9lu
 #define NUM_PTE_ENTRY (1 << PPN_BITS)
@@ -150,6 +151,7 @@ static inline pa_t get_pa(PTE entry) {
 /* Get/Set page frame number of the `entry` */
 static inline long get_pfn(PTE entry) { return (entry >> _PAGE_PFN_SHIFT); }
 static inline void set_pfn(PTE *entry, uint64_t pfn) {
+  *entry &= ~PFN_MASK;
   *entry |= (pfn << _PAGE_PFN_SHIFT);
 }
 
@@ -157,7 +159,10 @@ static inline void set_pfn(PTE *entry, uint64_t pfn) {
 static inline long get_attribute(PTE entry, uint64_t mask) {
   return entry & mask;
 }
-static inline void set_attribute(PTE *entry, uint64_t bits) { *entry |= bits; }
+static inline void set_attribute(PTE *entry, uint64_t bits) {
+  *entry &= ~ATTR_MASK;
+  *entry |= bits; 
+}
 
 extern void memset(void *dest, uint8_t val, uint32_t len);
 static inline void clear_pgdir(pa_t pgdir_addr) {

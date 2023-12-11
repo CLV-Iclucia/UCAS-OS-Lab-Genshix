@@ -32,6 +32,7 @@ void sys_exit(void);
 int  sys_kill(pid_t pid);
 int  sys_waitpid(pid_t pid);
 pid_t sys_getpid();
+pid_t sys_fork();
 
 
 /* TODO: [P3 task2] barrier */ 
