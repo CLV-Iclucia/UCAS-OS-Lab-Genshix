@@ -62,16 +62,19 @@ static bool try_copy_on_write(pcb_t* p, tcb_t* t, uva_t fault_uva) {
     // if we copy on write a stack, the t->ustack should be changed as well
     bool reset_stack = is_within_stack(fault_uva, t);
     pa_t pa = get_pa(*ppte);
-    kva_t nkva = kmalloc();
-    memcpy(KPTR(void, nkva), KPTR(void, pa2kva(pa)), PAGE_SIZE);
-    free_physical_page(pa);
-    pa_t npa = kva2pa(nkva);
-    set_pfn(ppte, ADDR(npa) >> NORMAL_PAGE_SHIFT);
-    inc_ref_cnt(nkva);
-    if (reset_stack) {
+    bool needs_copy = try_free_cow_page(pa);
+    if (needs_copy) {
+      kva_t nkva = kmalloc();
+      memcpy(KPTR(void, nkva), KPTR(void, pa2kva(pa)), PAGE_SIZE);
+      pa_t npa = kva2pa(nkva);
+      set_pfn(ppte, ADDR(npa) >> NORMAL_PAGE_SHIFT);
+      inc_ref_cnt(nkva);
+      if (reset_stack)
+        t->ustack = nkva;
+    }
+    if (reset_stack)
       set_attribute(ppte, PTE_U | PTE_R | PTE_W | PTE_V);
-      t->ustack = nkva;
-    } else
+    else
       set_attribute(ppte, PTE_U | PTE_R | PTE_X | PTE_W | PTE_V);
     success = true;
   }
@@ -91,10 +94,6 @@ void handle_pgfault(regs_context_t* regs, uint64_t stval, uint64_t scause) {
       return;
     // it is a valid uva, but not loaded
     // load on demand
-    if (PGROUNDDOWN(stval) == USER_ENTRYPOINT_UVA) {
-      PTE *ppte = get_pte(p->pgdir, fault_uva);
-      
-    }
     uint64_t offset = ADDR(fault_uva) - USER_ENTRYPOINT_UVA;
     uint64_t load_offset = PGROUNDDOWN(offset);
     pa_t pa = PGROUNDDOWN(stval) - USER_ENTRYPOINT_UVA < p->filesz

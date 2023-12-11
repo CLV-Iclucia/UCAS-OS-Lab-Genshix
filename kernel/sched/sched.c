@@ -569,8 +569,9 @@ tcb_t *copy_tcb(pcb_t *np, tcb_t *t) {
   nt->kstack = kmalloc();
   nt->trapframe = KPTR(regs_context_t, kmalloc());
   *(nt->trapframe) = *(t->trapframe);
+  nt->trapframe->kernel_sp = ADDR(nt->kstack) + PAGE_SIZE;
   nt->ctx->ra = (uint64_t)user_trap_ret;
-  nt->ctx->sp = ADDR(t->kstack) + PAGE_SIZE;
+  nt->ctx->sp = ADDR(nt->kstack) + PAGE_SIZE;
   nt->ustack = t->ustack;
   nt->tid = t->tid;
   nt->pcb = np;

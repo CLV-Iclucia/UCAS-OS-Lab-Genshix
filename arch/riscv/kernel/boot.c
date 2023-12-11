@@ -69,13 +69,11 @@ static void ARRTIBUTE_BOOTKERNEL setup_vm() {
 }
 
 extern uintptr_t _start[];
-extern void enable_kvm4bios(void);
 
 /*********** start here **************/
 int ARRTIBUTE_BOOTKERNEL boot_kernel(unsigned long mhartid) {
   if (mhartid == 0) {
     setup_vm();
-    enable_kvm4bios();
   } else {
     enable_vm();
   }

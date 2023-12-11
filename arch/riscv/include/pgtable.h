@@ -43,9 +43,8 @@ static inline void set_satp(unsigned mode, unsigned asid, unsigned long ppn) {
 static inline void switch_kpgdir() {
   set_satp(SATP_MODE_SV39, 0, PGDIR_PA >> NORMAL_PAGE_SHIFT);
   local_flush_tlb_all();
+  local_flush_icache_all();
 }
-
-
 
 /*
  * PTE format:
@@ -56,16 +55,16 @@ static inline void switch_kpgdir() {
 #define _PAGE_ACCESSED_OFFSET 6
 
 #define PTE_V (1 << 0)
-#define PTE_R (1 << 1)   /* Readable */
-#define PTE_W (1 << 2)  /* Writable */
-#define PTE_X (1 << 3)   /* Executable */
-#define PTE_U (1 << 4)   /* User */
+#define PTE_R (1 << 1) /* Readable */
+#define PTE_W (1 << 2) /* Writable */
+#define PTE_X (1 << 3) /* Executable */
+#define PTE_U (1 << 4) /* User */
 #define PTE_G (1 << 5) /* Global */
-#define PTE_A                                        \
-  (1 << 6)                   /* Set by hardware on any access \
-                              */
+#define PTE_A                                           \
+  (1 << 6)             /* Set by hardware on any access \
+                        */
 #define PTE_D (1 << 7) /* Set by hardware on any write */
-#define PTE_S (1 << 8)  /* Reserved for software-shared */
+#define PTE_S (1 << 8) /* Reserved for software-shared */
 #define PTE_C (1 << 9) /* Copy on write bit */
 
 #define _PAGE_PFN_SHIFT 10lu
@@ -73,7 +72,7 @@ static inline void switch_kpgdir() {
 #define VA_MASK ((1lu << 39) - 1)
 #define PTE_MASK ((1lu << 54) - 1)
 #define ATTR_MASK ((1lu << 10) - 1)
-#define PFN_MASK (PTE_MASK & ~ATTR_MASK)
+#define PFN_MASK (~ATTR_MASK)
 
 #define PPN_BITS 9lu
 #define NUM_PTE_ENTRY (1 << PPN_BITS)
@@ -103,7 +102,8 @@ typedef struct uva {
 #define UVA(addr) ((uva_t){(uint64_t)(addr)})
 #define UPTR(type, uva) ((type *)((uva).addr))
 #define ADDR(address) ((address).addr)
-#define VPN(address, level) ((address >> (NORMAL_PAGE_SHIFT + (9 * level))) & ((1 << PPN_BITS) - 1))
+#define VPN(address, level) \
+  ((address >> (NORMAL_PAGE_SHIFT + (9 * level))) & ((1 << PPN_BITS) - 1))
 #define PTE2PA(pte) (((pte >> _PAGE_PFN_SHIFT) & PTE_MASK) << NORMAL_PAGE_SHIFT)
 
 static inline void switch_pgdir(int pid, pa_t pgdir_pa) {
@@ -111,7 +111,7 @@ static inline void switch_pgdir(int pid, pa_t pgdir_pa) {
   local_flush_tlb_all();
 }
 
-extern PTE* kpgdir;
+extern PTE *kpgdir;
 
 static inline void my_assert(int cond) {
   if (!cond) {
@@ -121,7 +121,6 @@ static inline void my_assert(int cond) {
 }
 
 extern kva_t kmalloc();
-
 
 /* Translation between physical addr and kernel virtual addr */
 static inline pa_t kva2pa(kva_t kva) {
@@ -149,7 +148,9 @@ static inline pa_t get_pa(PTE entry) {
 }
 
 /* Get/Set page frame number of the `entry` */
-static inline long get_pfn(PTE entry) { return (entry >> _PAGE_PFN_SHIFT); }
+static inline long get_pfn(PTE entry) {
+  return ((entry & PTE_MASK) >> _PAGE_PFN_SHIFT);
+}
 static inline void set_pfn(PTE *entry, uint64_t pfn) {
   *entry &= ~PFN_MASK;
   *entry |= (pfn << _PAGE_PFN_SHIFT);
@@ -160,18 +161,21 @@ static inline long get_attribute(PTE entry, uint64_t mask) {
   return entry & mask;
 }
 static inline void set_attribute(PTE *entry, uint64_t bits) {
-  *entry &= ~ATTR_MASK;
-  *entry |= bits; 
+  *entry &= (~ATTR_MASK) & PTE_MASK;
+  *entry |= bits;
 }
 
 extern void memset(void *dest, uint8_t val, uint32_t len);
 static inline void clear_pgdir(pa_t pgdir_addr) {
   my_assert((ADDR(pgdir_addr) & (NORMAL_PAGE_SIZE - 1)) == 0);
-  memset(PPTR(void, pgdir_addr), 0, NORMAL_PAGE_SIZE);
+  uint8_t *dst = PPTR(uint8_t, pgdir_addr);
+  int len = NORMAL_PAGE_SIZE;
+  for (; len != 0; len--)
+    *dst++ = 0;
 }
 
-static inline PTE* new_pgdir() {
-  PTE* pgdir = KPTR(PTE, kmalloc());
+static inline PTE *new_pgdir() {
+  PTE *pgdir = KPTR(PTE, kmalloc());
   if (pgdir == NULL) return NULL;
   memset(pgdir, 0, NORMAL_PAGE_SIZE);
   return pgdir;

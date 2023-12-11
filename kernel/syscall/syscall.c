@@ -44,6 +44,7 @@ void handle_syscall(regs_context_t *regs, uint64_t interrupt, uint64_t cause)
   t->trapframe->sepc += 4;
   if (syscall[sysno] == NULL)
     panic("unhandled syscall: %d\n", sysno);
+  assert(is_kva(syscall[sysno]));
   syscall[sysno]();
   int ret = regs->a0();
   if (t->strace_bitmask & SYSCALL_BITMASK(sysno)) {

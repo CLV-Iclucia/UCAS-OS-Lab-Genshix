@@ -36,6 +36,7 @@
 
 #define INIT_KERNEL_STACK 0xffffffc052000000
 #define FREEMEM_START_KVA 0xffffffc052000000
+#define FREEMEM_START_PA  0x52000000
 #define FREEMEM_END_KVA   0xffffffc060000000
 
 #define STACK_TOP_UVA 0xf00010000
@@ -95,4 +96,5 @@ void copy_pgdir(PTE* dest, PTE* src, uva_t from, uva_t to, int level);
 int copy_page(PTE* dest, PTE* src, uva_t uva);
 
 void inc_ref_cnt(kva_t kva);
+bool try_free_cow_page(pa_t pa);
 #endif /* MM_H */

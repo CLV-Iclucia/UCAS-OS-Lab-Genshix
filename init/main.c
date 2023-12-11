@@ -129,6 +129,7 @@ static void img_putstr(uint32_t offset) {
 
 static char* init_tasks[] = {
     "shell",
+  //  "fork",
     "",
 };
 

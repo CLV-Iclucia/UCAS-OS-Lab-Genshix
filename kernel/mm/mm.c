@@ -40,7 +40,7 @@ static uint8_t ref_cnt[PAGE_NUM];
 spin_lock_t ref_cnt_lock;
 static uint8_t get_ref_cnt(kva_t pa) {
   spin_lock_acquire(&ref_cnt_lock);
-  uint64_t offset = ADDR(pa) - FREEMEM_START_KVA;
+  uint64_t offset = ADDR(pa) - FREEMEM_START_PA;
   assert(offset % PAGE_SIZE == 0);
   uint64_t idx = offset / PAGE_SIZE;
   uint8_t cnt = ref_cnt[idx];
@@ -62,6 +62,7 @@ static void dec_ref_cnt(kva_t kva) {
   uint64_t offset = ADDR(kva) - FREEMEM_START_KVA;
   assert(offset % PAGE_SIZE == 0);
   uint64_t idx = offset / PAGE_SIZE;
+  assert(idx >= 0 && idx < PAGE_NUM);
   assert(ref_cnt[idx] > 0);
   ref_cnt[idx]--;
   spin_lock_release(&ref_cnt_lock);
@@ -72,6 +73,7 @@ static uint8_t dec_and_get_ref_cnt(kva_t kva) {
   uint64_t offset = ADDR(kva) - FREEMEM_START_KVA;
   assert(offset % PAGE_SIZE == 0);
   uint64_t idx = offset / PAGE_SIZE;
+  assert(idx >= 0 && idx < PAGE_NUM);
   assert(ref_cnt[idx] > 0);
   ref_cnt[idx]--;
   int cnt = ref_cnt[idx];
@@ -187,6 +189,23 @@ void uvmunmap(PTE* pgdir, uva_t uva) {
 void free_physical_page(pa_t pa) {
   kva_t kva = pa2kva(pa);
   if (dec_and_get_ref_cnt(kva) == 0) kfree(kva);
+}
+
+bool try_free_cow_page(pa_t pa) {
+  spin_lock_acquire(&ref_cnt_lock);
+  uint64_t offset = ADDR(pa) - FREEMEM_START_PA;
+  assert(offset % PAGE_SIZE == 0);
+  uint64_t idx = offset / PAGE_SIZE;
+  assert(idx >= 0 && idx < PAGE_NUM);
+  uint8_t cnt = ref_cnt[idx];
+  assert(cnt > 0);
+  if (cnt == 1) {
+    spin_lock_release(&ref_cnt_lock);
+    return false;
+  }
+  ref_cnt[idx]--;
+  spin_lock_release(&ref_cnt_lock);
+  return true;  
 }
 
 void uvmfree(pcb_t* p) {
@@ -338,16 +357,39 @@ int copy_page(PTE* npgdir, PTE* pgdir, uva_t uva) {
   return 0;
 }
 
+#define SHARED_PAGE_NUM 32
+
+
+static int shared_mapping_pool[SHARED_PAGE_NUM];
+static int shared_mapping_pool_head = 0;
+static int shared_mapping_pool_tail = SHARED_PAGE_NUM - 1;
 typedef struct shared_page_mapping {
   int key;
   pa_t pa;
 } shared_page_mapping_t;
-list_node_t mapping_queue;
+static shared_page_mapping_t shared_page_mappings[SHARED_PAGE_NUM];
 spin_lock_t shared_page_lock;
+void init_shared_pages() {
+  for (int i = 0; i < SHARED_PAGE_NUM; i++)
+    shared_mapping_pool[i] = i;
+  spin_lock_init(&shared_page_lock);
+}
+
+uint64_t get_shared_page(int key) {
+  spin_lock_acquire(&shared_page_lock);
+  for (int i = 0; i < SHARED_PAGE_NUM; i++) {
+    if (shared_page_mappings[i].key == key) {
+      spin_lock_release(&shared_page_lock);
+      return ADDR(shared_page_mappings[i].pa);
+    }
+  }
+  spin_lock_release(&shared_page_lock);
+  return 0;
+}
 
 void do_shm_dt(void) {
   uint64_t addr = argraw(0);
-  // shm_page_dt(addr);
+  shm_page_dt(addr);
 }
 
 void shm_page_dt(uintptr_t addr) {

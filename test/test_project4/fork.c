@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-int N = 1;
+int N = 10;
 // copied and modified from the cow lab of xv6
 void forktest(char *s) {
   // the original N is 1000
@@ -14,7 +14,10 @@ void forktest(char *s) {
     if (pid < 0) break;
     if (pid == 0) {
       sys_move_cursor(0, n + 1);
-      printf("Hello world! This is child process %d\n", n);
+      for (int i = 0; i < 1000; i++) {
+        sys_move_cursor(0, n + 1);
+        printf("Hello world! This is child process %d saying %d\n", n, i);
+      }
       sys_exit();
     }
   }
