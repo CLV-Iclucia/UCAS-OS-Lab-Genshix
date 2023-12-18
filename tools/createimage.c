@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "tinylibdeflate.h"
+// #include "tinylibdeflate.h"
 
 #define IMAGE_FILE "./image"
 #define ARGS "[--extended] [--vm] <bootblock> <executable-file> ..."
@@ -104,15 +104,16 @@ static void write_kernel(Elf64_Phdr phdr, uint32_t ptr, FILE *fp)
 }
 static uint32_t compressed_size = 0;
 static uint32_t compress_kernel(uint32_t size) {
-    printf("compressing kernel...\n");
-    deflate_set_memory_allocator((void * (*)(int))malloc, free);
-    struct libdeflate_compressor * compressor = deflate_alloc_compressor(1);
+    // printf("compressing kernel...\n");
+    // deflate_set_memory_allocator((void * (*)(int))malloc, free);
+    // struct libdeflate_compressor * compressor = deflate_alloc_compressor(1);
     
-    int out_nbytes = deflate_deflate_compress(compressor, compress_input_buf, 
-                                              size, compress_output_buf, BUFFER_SIZE);
+    // int out_nbytes = deflate_deflate_compress(compressor, compress_input_buf, 
+    //                                           size, compress_output_buf, BUFFER_SIZE);
     printf("original kernel size: %d\n", size);
-    printf("compressed kernel size: %d\n", out_nbytes);
-    return out_nbytes;
+    // printf("compressed kernel size: %d\n", out_nbytes);
+    memcpy(compress_output_buf, compress_input_buf, size);
+    return size;
 }
 
 static void write_compressed(uint32_t size, FILE* img, int* phyaddr) {

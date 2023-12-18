@@ -46,14 +46,14 @@ KERNEL_CFLAGS   = $(CFLAGS) $(KERNEL_INCLUDE) -Wl,--defsym=TEXT_START=$(KERNEL_E
 USER_INCLUDE    = -I$(DIR_TINYLIBC)/include
 USER_CFLAGS     = $(CFLAGS) $(USER_INCLUDE)
 
-LIB_DIR     = $(DEFLATE_DIR)/lib
+# LIB_DIR     = $(DEFLATE_DIR)/lib
 
-DEFLATE_INCLUDE = -I$(LIB_DIR) -I$(DEFLATE_DIR)
-DEFLATE_CFLAGS  = -Os $(DEFLATE_INCLUDE) -Wall -DFREESTANDING
+# DEFLATE_INCLUDE = -I$(LIB_DIR) -I$(DEFLATE_DIR)
+# DEFLATE_CFLAGS  = -Os $(DEFLATE_INCLUDE) -Wall -DFREESTANDING
 
-DECOMPRESSOR_CFLAGS  = -static -fno-builtin -Wl,--build-id=none -nostdlib \
-                         -nostdinc -Wall -mcmodel=medany -ggdb3  \
-												 $(BOOT_INCLUDE) $(DEFLATE_CFLAGS)
+# DECOMPRESSOR_CFLAGS  = -static -fno-builtin -Wl,--build-id=none -nostdlib \
+#                          -nostdinc -Wall -mcmodel=medany -ggdb3  \
+# 												 $(BOOT_INCLUDE) $(DEFLATE_CFLAGS)
 
 USER_LDFLAGS    = -L$(DIR_BUILD) -ltinyc
 
@@ -79,7 +79,7 @@ DIR_LIBS        = ./libs
 DIR_TINYLIBC    = ./tiny_libc
 DIR_TEST        = ./test
 DIR_TOOLS       = ./tools
-DEFLATE_DIR     = $(DIR_TOOLS)/deflate
+# DEFLATE_DIR     = $(DIR_TOOLS)/deflate
 DIR_TEST_PROJ   = $(DIR_TEST)/test_project$(PROJECT_IDX)
 
 BOOTLOADER_ENTRYPOINT   = 0x50200000
@@ -99,7 +99,7 @@ SRC_KERNEL  = $(wildcard $(DIR_KERNEL)/*/*.c)
 SRC_LIBS    = $(wildcard $(DIR_LIBS)/*.c)
 SRC_START   = $(wildcard $(DIR_ARCH)/kernel/*.c)
 
-ELF_DECOMPRESSOR = $(DIR_BUILD)/decompressor
+# ELF_DECOMPRESSOR = $(DIR_BUILD)/decompressor
 SRC_MAIN    = $(SRC_ARCH) $(SRC_START) $(SRC_INIT) $(SRC_BIOS) $(SRC_DRIVER) $(SRC_KERNEL) $(SRC_LIBS)
 ELF_BOOT    = $(DIR_BUILD)/bootblock
 ELF_MAIN    = $(DIR_BUILD)/main
@@ -113,7 +113,7 @@ SRC_CRT0    = $(wildcard $(DIR_ARCH)/crt0/*.S)
 OBJ_CRT0    = $(DIR_BUILD)/$(notdir $(SRC_CRT0:.S=.o))
 
 SRC_LIB     = $(LIB_DIR)/*.c
-SRC_COMMON  = $(DEFLATE_DIR)/*.c
+# SRC_COMMON  = $(DEFLATE_DIR)/*.c
 SRC_LIBC    = $(wildcard ./tiny_libc/*.c)
 OBJ_LIBC    = $(patsubst %.c, %.o, $(foreach file, $(SRC_LIBC), $(DIR_BUILD)/$(notdir $(file))))
 LIB_TINYC   = $(DIR_BUILD)/libtinyc.a
@@ -181,10 +181,10 @@ $(ELF_MAIN): $(SRC_MAIN) riscv.lds
 $(OBJ_CRT0): $(SRC_CRT0)
 	$(CC) $(USER_CFLAGS) -I$(DIR_ARCH)/include -c $< -o $@
 
-$(ELF_DECOMPRESSOR): $(DIR_TOOLS)/decompressor.c $(SRC_BIOS) $(SRC_LIB) $(SRC_COMMON) $(OBJ_CRT0)
-	$(CC) $(DECOMPRESSOR_CFLAGS) $(SRC_LIB) $(OBJ_CRT0) $(SRC_COMMON) $(DIR_TOOLS)/decompressor.c \
-		$(SRC_BIOS) -Wl,--defsym=TEXT_START=0x52000000 \
-		-o $(DIR_BUILD)/decompressor -T riscv.lds -e decompress
+# $(ELF_DECOMPRESSOR): $(DIR_TOOLS)/decompressor.c $(SRC_BIOS) $(SRC_LIB) $(SRC_COMMON) $(OBJ_CRT0)
+# 	$(CC) $(DECOMPRESSOR_CFLAGS) $(SRC_LIB) $(OBJ_CRT0) $(SRC_COMMON) $(DIR_TOOLS)/decompressor.c \
+# 		$(SRC_BIOS) -Wl,--defsym=TEXT_START=0x52000000 \
+# 		-o $(DIR_BUILD)/decompressor -T riscv.lds -e decompress
 
 $(LIB_TINYC): $(OBJ_LIBC)
 	$(AR) rcs $@ $^
@@ -198,7 +198,9 @@ $(DIR_BUILD)/%: $(DIR_TEST_PROJ)/%.c $(OBJ_CRT0) $(LIB_TINYC) riscv.lds
 $(DIR_BUILD)/%: $(DIR_TEST)/%.c $(OBJ_CRT0) $(LIB_TINYC) riscv.lds
 	$(CC) $(USER_CFLAGS) -o $@ $(OBJ_CRT0) $< $(USER_LDFLAGS) -Wl,--defsym=TEXT_START=$(USER_ENTRYPOINT) -T riscv.lds
 
-elf: $(ELF_DECOMPRESSOR) $(ELF_BOOT) $(ELF_MAIN) $(LIB_TINYC) $(ELF_USER)
+elf: $(ELF_BOOT) $(ELF_MAIN) $(LIB_TINYC) $(ELF_USER)
+
+# elf: $(ELF_DECOMPRESSOR) $(ELF_BOOT) $(ELF_MAIN) $(LIB_TINYC) $(ELF_USER)
 
 .PHONY: elf
 
@@ -206,10 +208,13 @@ elf: $(ELF_DECOMPRESSOR) $(ELF_BOOT) $(ELF_MAIN) $(LIB_TINYC) $(ELF_USER)
 # Host Linux Rules
 # -----------------------------------------------------------------------
 
-$(ELF_CREATEIMAGE): $(SRC_CREATEIMAGE) $(SRC_LIB) $(SRC_COMMON)
-	$(HOST_CC) $(DEFLATE_CFLAGS) $(SRC_CREATEIMAGE) $(SRC_LIB) $(SRC_COMMON) -o $@ -ggdb -Wall
+$(ELF_CREATEIMAGE): $(SRC_CREATEIMAGE) 
+	$(HOST_CC) $(SRC_CREATEIMAGE) -o $@ -ggdb -Wall
 
-image: $(ELF_CREATEIMAGE) $(ELF_BOOT) $(ELF_DECOMPRESSOR) $(ELF_MAIN) $(ELF_USER) 
+# image: $(ELF_CREATEIMAGE) $(ELF_BOOT) $(ELF_DECOMPRESSOR) $(ELF_MAIN) $(ELF_USER) 
+# 	cd $(DIR_BUILD) && ./$(<F) --extended $(filter-out $(<F), $(^F))
+
+image: $(ELF_CREATEIMAGE) $(ELF_BOOT) $(ELF_MAIN) $(ELF_USER) 
 	cd $(DIR_BUILD) && ./$(<F) --extended $(filter-out $(<F), $(^F))
 
 .PHONY: image

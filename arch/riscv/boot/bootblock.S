@@ -7,10 +7,10 @@
 
 // BIOS function entry (jump here to use BIOS APIs)
 .equ bios_func_entry, 0x50150000
-.equ decompressor_offset, 0x1000
-.equ decompressor_loc, 0x54000000
+# .equ decompressor_offset, 0x1000
+# .equ decompressor_loc, 0x54000000
 .equ kernel, 0x50202000
-.equ decompressor_stack, 0x50500000
+# .equ decompressor_stack, 0x50500000
 
 .text
 .global main
@@ -23,11 +23,7 @@ main:
   li t0, 1
   beq a0, t0, booting_cpu1
   j booting_cpu0
-booting_cpu0:
-    li a7, 9
-    la a0, cpu0_msg
-    jal bios_func_entry
-  // decompressor_size = user_start_offset - os_size - 512
+booting_cpu0: 
     la t0, user_start_offset_loc
     ld s2, 0(t0)
     la t0, os_size_loc
@@ -46,6 +42,9 @@ booting_cpu0:
     ld a1, 0(t0)
     la t0, decompressor_loc
     jalr ra, 0(t0)
+    # li a7, 9
+    # la a0, cpu0_msg
+    # jal bios_func_entry
     bnez a0, done
     j kernel
 done:
