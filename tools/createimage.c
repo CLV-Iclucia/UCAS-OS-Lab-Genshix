@@ -22,7 +22,7 @@
 #define BOOT_LOADER_SIG_2 0xaa
 
 #define NBYTES2SEC(nbytes) (((nbytes) / SECTOR_SIZE) + ((nbytes) % SECTOR_SIZE != 0))
-
+#define SECROUNDUP(nbytes) (NBYTES2SEC(nbytes) * SECTOR_SIZE)
 /* TODO: [p1-task4] design your own task_info_t */
 typedef struct {
   uint32_t offset;
@@ -185,6 +185,7 @@ static void create_image(int nfiles, char *files[])
     }
     fclose(fp);
     assert(nbytes_kernel > 0);
+    nbytes_kernel = SECROUNDUP(nbytes_kernel);
     compressed_size = compress_kernel(nbytes_kernel);
     /* open the image file */
     img = fopen(IMAGE_FILE, "w");
@@ -211,6 +212,7 @@ static void create_image(int nfiles, char *files[])
         if (strcmp(*files, "main") == 0) {
             printf("compressed kernel starts at %hx.\n", phyaddr);
             write_compressed(compressed_size, img, &phyaddr);
+            write_padding(img, &phyaddr, NBYTES2SEC(phyaddr) * SECTOR_SIZE);
             user_start = phyaddr;
             goto inc;
         }
@@ -241,11 +243,11 @@ static void create_image(int nfiles, char *files[])
             write_padding_bootblock(img, &phyaddr, compressed_size);
             assert(phyaddr == SECTOR_SIZE);
         }
-        if (strcmp(*files, "decompressor") == 0) {
-            int new_phyaddr = NBYTES2SEC(phyaddr) * SECTOR_SIZE;
-            write_padding(img, &phyaddr, new_phyaddr);
-            printf("pad decompressor to 0x%hx.\n", phyaddr);
-        }
+        // if (strcmp(*files, "decompressor") == 0) {
+        //     int new_phyaddr = NBYTES2SEC(phyaddr) * SECTOR_SIZE;
+        //     write_padding(img, &phyaddr, new_phyaddr);
+        //     printf("pad decompressor to 0x%hx.\n", phyaddr);
+        // }
 inc:
         fclose(fp);
         files++;

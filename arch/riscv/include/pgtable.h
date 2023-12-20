@@ -144,7 +144,7 @@ static inline int valid(PTE entry) { return (entry & PTE_V); }
 /* get physical page addr from PTE 'entry' */
 static inline pa_t get_pa(PTE entry) {
   if (!valid(entry)) return PA(0);
-  return PA(((entry >> _PAGE_PFN_SHIFT) & PTE_MASK) << NORMAL_PAGE_SHIFT);
+  return PA(((entry & PTE_MASK) >> _PAGE_PFN_SHIFT) << NORMAL_PAGE_SHIFT);
 }
 
 /* Get/Set page frame number of the `entry` */
@@ -152,7 +152,7 @@ static inline long get_pfn(PTE entry) {
   return ((entry & PTE_MASK) >> _PAGE_PFN_SHIFT);
 }
 static inline void set_pfn(PTE *entry, uint64_t pfn) {
-  *entry &= ~PFN_MASK;
+  *entry &= ~(PTE_MASK ^ ATTR_MASK);
   *entry |= (pfn << _PAGE_PFN_SHIFT);
 }
 

@@ -24,36 +24,45 @@ main:
   beq a0, t0, booting_cpu1
   j booting_cpu0
 booting_cpu0: 
-    la t0, user_start_offset_loc
-    ld s2, 0(t0)
-    la t0, os_size_loc
-    ld t1, 0(t0)
-    sub s2, s2, t1     // s2 is the kernel offset
-    addi t0, s2, -512
-    srai a1, t0, 9 // #sectors
-    li a7, BIOS_SDREAD
-    la a0, decompressor_loc
-    li a2, 1        // sector number: decompressor will always be put after bootblock
-    jal bios_func_entry
-  // decompress(uint32_t start, uint 32_t size)
-    la sp, decompressor_stack
-    mv a0, s2
-    la t0, os_size_loc
-    ld a1, 0(t0)
-    la t0, decompressor_loc
-    jalr ra, 0(t0)
-    # li a7, 9
-    # la a0, cpu0_msg
-    # jal bios_func_entry
-    bnez a0, done
-    j kernel
-done:
-  // before jumping to the kernel, remove the first instruction of decompressor
-  // so that if we execute the decompressor in the future by mistake it will immmediately stop
-    la t0, decompressor_loc
-    sd zero, 0(t0)
-  // now we can jump to the kernel
-    j kernel
+    la      a5, os_size_loc
+    lw      s1,0(a5)
+    ld      a5,0(a5)
+    srliw   a5,s1,9
+    sext.w  s4,a5
+    li      s1,0
+    li      s3,1
+    j       .L2
+.L4:
+    subw    a5,s4,s1
+    sext.w  a5,a5
+    sext.w  a3,a5
+    li      a4,64
+    bleu    a3,a4,.L3
+    li      a5,64
+.L3:
+    sext.w  s2,a5
+    la      a4,kernel
+    slliw   a5,s1,9
+    sext.w  a5,a5
+    slli    a5,a5,32
+    srli    a5,a5,32
+    add     a5,a4,a5
+    mv      a2,s3
+    mv      a1,s2
+    mv      a0,a5
+    li      a7, BIOS_SDREAD
+    jal     bios_func_entry
+    addw    a5,s1,s2
+    sext.w  s1,a5
+    addw    a5,s3,s2
+    sext.w  s3,a5
+.L2:
+    mv      a4,s1
+    mv      a5,s4
+    bltu    a4,a5,.L4
+    li      a5,0
+    mv      a0,a5
+    j       kernel
 	/************************************************************/
 	/* Do not touch this comment. Reserved for future projects. */
 	/************************************************************/
@@ -63,9 +72,6 @@ stop:
 	nop
 
 booting_cpu1:
-  li a7, 9
-  la a0, cpu1_msg
-  jal bios_func_entry
   la t0, kernel
   csrw stvec, t0
   not t0, x0
@@ -74,9 +80,4 @@ booting_cpu1:
   ori t0, t0, 2
   csrw sstatus, t0
 loop:
-  wfi
   j loop
-.data
-
-cpu0_msg: .string "CPU 0 booting\n\r"
-cpu1_msg: .string "CPU 1 booting\n\r"
