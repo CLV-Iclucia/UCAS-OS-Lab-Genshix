@@ -26,8 +26,10 @@
 #ifndef MM_H
 #define MM_H
 
+#include <os/lock.h>
 #include <type.h>
 #include <pgtable.h>
+#include <assert.h>
 
 #define MAP_KERNEL 1
 #define MAP_USER 2
@@ -50,7 +52,8 @@
 #define PGROUNDDOWN(a)  ROUNDDOWN(a, PAGE_SIZE)
 
 typedef struct pcb pcb_t;
-
+extern spin_lock_t ref_cnt_lock;
+extern uint8_t ref_cnt[];
 void init_memory();
 
 // TODO [P4-task1] */
@@ -62,7 +65,12 @@ extern void kfree(kva_t kva);
 static inline void pfree(pa_t pa) {
   kfree(pa2kva(pa));
 }
-
+static inline uint8_t page_idx(kva_t kva) {
+  uint64_t offset = ADDR(kva) - FREEMEM_START_KVA;
+  assert(offset % PAGE_SIZE == 0);
+  uint64_t idx = offset / PAGE_SIZE;
+  return idx;
+}
 extern void share_pgtable(kva_t dest_pgdir_kva, kva_t src_pgdir_kva);
 extern kva_t alloc_page_helper(uint64_t va, PTE* pgdir);
 

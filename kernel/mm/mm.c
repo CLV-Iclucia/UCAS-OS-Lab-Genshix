@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <os/list.h>
 #include <os/lock.h>
 #include <os/mm.h>
@@ -36,7 +35,7 @@ void init_memory() {
   spin_lock_init(&freemem_lock);
 }
 
-static uint8_t ref_cnt[PAGE_NUM];
+uint8_t ref_cnt[PAGE_NUM];
 spin_lock_t ref_cnt_lock;
 static uint8_t get_ref_cnt(kva_t pa) {
   spin_lock_acquire(&ref_cnt_lock);
@@ -192,19 +191,16 @@ void free_physical_page(pa_t pa) {
 }
 
 bool try_free_cow_page(pa_t pa) {
-  spin_lock_acquire(&ref_cnt_lock);
+  assert(spin_lock_holding(&ref_cnt_lock));
   uint64_t offset = ADDR(pa) - FREEMEM_START_PA;
   assert(offset % PAGE_SIZE == 0);
   uint64_t idx = offset / PAGE_SIZE;
   assert(idx >= 0 && idx < PAGE_NUM);
   uint8_t cnt = ref_cnt[idx];
   assert(cnt > 0);
-  if (cnt == 1) {
-    spin_lock_release(&ref_cnt_lock);
+  if (cnt == 1)
     return false;
-  }
   ref_cnt[idx]--;
-  spin_lock_release(&ref_cnt_lock);
   return true;  
 }
 

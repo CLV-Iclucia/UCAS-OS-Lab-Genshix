@@ -567,6 +567,8 @@ tcb_t *copy_tcb(pcb_t *np, tcb_t *t) {
   nt->lock_bitmask = 0;
   nt->wakeup_time = t->wakeup_time;
   nt->kstack = kmalloc();
+  nt->cursor_x = t->cursor_x;
+  nt->cursor_y = t->cursor_y;
   nt->trapframe = KPTR(regs_context_t, kmalloc());
   *(nt->trapframe) = *(t->trapframe);
   nt->trapframe->kernel_sp = ADDR(nt->kstack) + PAGE_SIZE;
@@ -588,9 +590,11 @@ pcb_t *copy_pcb(pcb_t *p, tcb_t *t) {
   pcb_t *np = alloc_pcb();
   if (np == NULL) return NULL;
   spin_lock_init(&np->lock);
+  spin_lock_init(&np->wait_lock);
   spin_lock_acquire(&np->lock);
   np->pid = np - pcb + 1;
   np->threads.next = np->threads.prev = &(np->threads);
+  np->wait_queue.next = np->wait_queue.prev = &(np->wait_queue);
   tcb_t *nt = copy_tcb(np, t);
   if (nt == NULL) goto bad;
   np->pgdir = new_pgdir();

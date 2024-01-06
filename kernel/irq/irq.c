@@ -121,6 +121,7 @@ void first_irq_timer(regs_context_t *regs, uint64_t stval, uint64_t scause)
   // so that when cpu 0 modifies the table, no one is reading it
   if (mycpuid() == 0)
     irq_table[IRQC_S_TIMER] = handle_irq_timer;
+  // else while(1);
   do_scheduler();
 }
 extern void handle_pgfault();

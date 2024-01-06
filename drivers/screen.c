@@ -7,8 +7,7 @@
 #include <printk.h>
 #include <screen.h>
 #include <sys/syscall.h>
-
-#include "os/smp.h"
+#include <os/smp.h>
 
 #define SCREEN_WIDTH 80
 #define SCREEN_HEIGHT 50
@@ -129,7 +128,16 @@ void screen_reflush(void) {
   spin_lock_release(&screen_lock);
 }
 
-syscall_transfer_v_p(do_write, screen_write);
+void do_write(void) {
+  tcb_t *t = mythread();
+  uint64_t arg0 = argraw(0);
+  // printk("proc %d writes %s, cursor (%d, %d), stack %lx, parent is %d", t->pcb->pid, (char*)arg0, t->cursor_x,
+  //         t->cursor_y, ADDR(kva2pa(t->ustack)), t->pcb->parent->pid);
+  screen_write((void *)arg0);
+  t->trapframe->regs[10] = 0;
+}
+
+//syscall_transfer_v_p(do_write, screen_write);
 // transfer do_reflush to screen_reflush
 syscall_transfer_v_v(do_reflush, screen_reflush);
 
@@ -156,12 +164,19 @@ void do_move_cursor_y(void) {
 }
 
 void do_move_cursor(void) {
+  // static int logx = 0;
+  // static int logy = 30;
   int x, y;
   tcb_t *t = mythread();
   if (argint(0, &x) < 0 || argint(1, &y) < 0) {
     t->trapframe->a0() = -1;
     return;
   }
+  // t->cursor_x = logx;
+  // t->cursor_y = logy;
+  // printk("(%d, %d, %d)", t->pcb->pid, *(int*)0xf0000ffc0, y);
+  // logx = t->cursor_x;
+  // logy = t->cursor_y;
   t->cursor_x = x;
   t->cursor_y = y;
   t->trapframe->a0() = 0;

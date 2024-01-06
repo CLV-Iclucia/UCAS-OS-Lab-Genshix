@@ -32,10 +32,9 @@ void handle_segfault(pcb_t* p, tcb_t* t, uva_t fault_uva) {
   spin_lock_acquire(&p->lock);
   kill_pcb(p);
   spin_lock_release(&p->lock);
-  printk(
-      "Invalid uva access: %lx\nProcess %s has been killed. The fault "
-      "instruction is %lx.",
-      ADDR(fault_uva), p->name, t->trapframe->sepc);
+  // printk(
+  //     "Invalid uva access: %lx\nProcess %d(%s) has been killed.",
+  //     ADDR(fault_uva), p->pid, p->name);
   spin_lock_acquire(&t->lock);
   sched(t);
 }
@@ -54,29 +53,36 @@ static PTE* get_pte(PTE* pgdir, uva_t uva) {
 }
 
 static bool try_copy_on_write(pcb_t* p, tcb_t* t, uva_t fault_uva) {
+  static spin_lock_t cow_lock = {-1, UNLOCKED};
   bool success = false;
   PTE* ppte = get_pte(p->pgdir, fault_uva);
   if (ppte == NULL) return false;
   if (*ppte & PTE_C) {
+    spin_lock_acquire(&cow_lock);
     // because we record the ustack, this should be handled specially
     // if we copy on write a stack, the t->ustack should be changed as well
     bool reset_stack = is_within_stack(fault_uva, t);
     pa_t pa = get_pa(*ppte);
+    spin_lock_acquire(&ref_cnt_lock);
     bool needs_copy = try_free_cow_page(pa);
     if (needs_copy) {
       kva_t nkva = kmalloc();
       memcpy(KPTR(void, nkva), KPTR(void, pa2kva(pa)), PAGE_SIZE);
+      // printk("n = %d", *(int*)(ADDR(pa2kva(pa)) + 0xfc0));
+      uint8_t idx = page_idx(nkva);
       pa_t npa = kva2pa(nkva);
       set_pfn(ppte, ADDR(npa) >> NORMAL_PAGE_SHIFT);
-      inc_ref_cnt(nkva);
+      ref_cnt[idx]++;
       if (reset_stack)
-        t->ustack = nkva;
+        t->ustack = nkva; 
     }
     if (reset_stack)
       set_attribute(ppte, PTE_U | PTE_R | PTE_W | PTE_V);
     else
       set_attribute(ppte, PTE_U | PTE_R | PTE_X | PTE_W | PTE_V);
+    spin_lock_release(&ref_cnt_lock);
     success = true;
+    spin_lock_release(&cow_lock);
   }
   return success;
 }

@@ -12,18 +12,24 @@
 .equ kernel, 0x50202000
 # .equ decompressor_stack, 0x50500000
 
+.equ KERNEL_MEM_END, 0x51000000
+
 .text
 .global main
 
 main:
 	// fence on all memory and I/O
 	fence
-  // if a0 = 1, branch to booting_cpu1
-  // else, branch to booting_cpu0
   li t0, 1
-  beq a0, t0, booting_cpu1
-  j booting_cpu0
-booting_cpu0: 
+  beq a0, t0, booting_cpu1 
+kernel_memset:
+    la t0, kernel
+    la t1, KERNEL_MEM_END
+    li t2, 0
+kernel_memset_loop:
+    sd t2, 0(t0)
+    addi t0, t0, 8
+    bne t0, t1, kernel_memset_loop
     la      a5, os_size_loc
     lw      s1,0(a5)
     ld      a5,0(a5)
