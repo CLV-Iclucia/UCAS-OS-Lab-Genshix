@@ -17,7 +17,10 @@
 #include <os/string.h>
 #include <os/task.h>
 #include <os/time.h>
+#include <os/ioremap.h>
 #include <printk.h>
+#include <common.h>
+#include <e1000.h>
 #include <screen.h>
 #include <sys/syscall.h>
 #include <type.h>
@@ -294,6 +297,13 @@ int main(void) {
     // Init system call table (0_0)
      // TODO: [p5-task3] Init plic
     // plic_init(plic_addr, nr_irqs);
+    e1000 = (volatile uint8_t *)bios_read_fdt(ETHERNET_ADDR);
+    uint64_t plic_addr = bios_read_fdt(PLIC_ADDR);
+    uint32_t nr_irqs = (uint32_t)bios_read_fdt(NR_IRQS);
+    e1000 = (uint8_t *)ioremap((uint64_t)e1000, 8 * NORMAL_PAGE_SIZE);
+    plic_addr = (uintptr_t)ioremap((uint64_t)plic_addr, 0x4000 * NORMAL_PAGE_SIZE);
+    // printk("> [INIT] e1000: %lx, plic_addr: %lx, nr_irqs: %lx.\n", e1000, plic_addr, nr_irqs);
+
     // printk("> [INIT] PLIC initialized successfully. addr = 0x%lx, nr_irqs=0x%x\n", plic_addr, nr_irqs);
 
     // Init network device
