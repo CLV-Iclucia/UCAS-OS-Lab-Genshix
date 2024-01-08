@@ -214,8 +214,6 @@ static void init_syscall(void) {
   register_syscall(SYSCALL_MBOX_CLOSE, mailbox_close);
   register_syscall(SYSCALL_MBOX_SEND, mailbox_send);
   register_syscall(SYSCALL_MBOX_RECV, mailbox_recv);
-  register_syscall(SYSCALL_SHM_GET, shm_get);
-  register_syscall(SYSCALL_SHM_DT, shm_dt);
 }
 
 static void init_sched_pcb() {
@@ -294,6 +292,13 @@ int main(void) {
     // Init interrupt (^_^)
     init_exception();
     // Init system call table (0_0)
+     // TODO: [p5-task3] Init plic
+    // plic_init(plic_addr, nr_irqs);
+    // printk("> [INIT] PLIC initialized successfully. addr = 0x%lx, nr_irqs=0x%x\n", plic_addr, nr_irqs);
+
+    // Init network device
+    e1000_init();
+
     init_syscall();
     // Init screen (QAQ)
     init_screen();

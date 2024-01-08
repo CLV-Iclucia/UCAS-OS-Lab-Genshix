@@ -43,6 +43,7 @@
 #define NAME_MAXLEN 16
 #define NUM_MAX_THREADS (NUM_MAX_TASK * 4)
 #define NUM_MAX_THREADS_PER_TASK 64
+#define NUM_MAX_OPEN_FILES 16
 
 // constraints for a valid trapframe:
 // 1. sepc, ra and sp must be aligned and within valid ranges
@@ -139,9 +140,12 @@ typedef enum {
   PROC_INACTIVATE,
 } proc_status_t;
 
+typedef struct file file_t;
+
 /* Process Control Block */
 typedef struct pcb {
   char name[NAME_MAXLEN]; // read only
+  file_t* files[NUM_MAX_OPEN_FILES];
   spin_lock_t lock;
   // constraints for thread lists:
   // 1. num_threads == list_length(&threads)

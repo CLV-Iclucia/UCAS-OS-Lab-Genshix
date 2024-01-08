@@ -3,16 +3,13 @@
 
 #include <common.h>
 #include <os/fs-defs.h>
+#include <os/fs-cache.h>
 #include <os/lock.h>
 #include <os/sched.h>
 #include <os/string.h>
 #include <os/task.h>
 #include <os/time.h>
 #include <pgtable.h>
-
-#define DISK_CACHE_BLOCK_NUM 16
-#define DISK_CACHE_VALID 0x1
-#define DISK_CACHE_DIRTY 0x2
 
 #define LOWBIT(x) ((x) & (-(x)))
 
@@ -32,12 +29,6 @@ static inline int fast_log(uint32_t x) {
 // #endif
 }
 
-typedef struct disk_cache_meta {
-  int block_id;
-  uint32_t time_stamp;
-  uint8_t status;
-} disk_cache_meta_t;
-
 typedef enum file_type {
   FT_FILE,
   FT_DIR,
@@ -50,75 +41,40 @@ typedef struct inode {
   uint32_t double_indir[NINDIR_2];
   uint32_t triple_indir;
   uint32_t size;
-  file_type type;  
+  file_type type;
   uint8_t id;
+  uint8_t ref;
+  uint8_t nlinks;
 } inode;
 
 typedef struct super_block {
-  uint32_t magic;
-} super_block;
+  uint32_t magic; // should be FS_MAGIC
+  uint32_t n_inodes;
+  uint32_t block_map_offset;
+  uint32_t inode_map_offset;
+  uint32_t inode_offset;
+  uint32_t data_offset;
+} super_block_t;
+
+static inline void dump_super_block(super_block_t* super_block, int super_block_sector) {
+  char buf[SECTOR_SIZE];
+  super_block_t* sb = (super_block_t*)buf;
+  sb->magic = super_block->magic;
+  ker_sd_write(buf, 1, super_block_sector);
+}
 
 typedef struct file {
   char name[MAX_NAME_LENGTH];
   uint8_t rights;
 } file_t;
 
-extern disk_cache_meta_t disk_cache[DISK_CACHE_BLOCK_NUM];
-extern char disk_cache_data[DISK_CACHE_BLOCK_NUM][BLOCK_SIZE];
-extern spin_lock_t disk_cache_lock;  // one lock to lock them all
+typedef struct dentry {
+  char name[MAX_NAME_LENGTH];
+  uint32_t inode_id;
+} dentry_t;
+
 extern spin_lock_t block_map_lock;
-extern inode inodes[NINODE];
-void init_fs(int super_block_sector);
-int select_cache_block(int sector_number);
-
-static inline void ker_sd_read(char* buf, int sec_num, int start_sec) {
-  sd_read(ADDR(kva2pa(KVA(buf))), sec_num, start_sec);
-}
-
-static inline void ker_sd_write(const char* buf, int sec_num, int start_sec) {
-  sd_write(ADDR(kva2pa(KVA(buf))), sec_num, start_sec);
-}
-
-static inline void read_disk_block(char* buf, int block_id) {
-  spin_lock_acquire(&disk_cache_lock);
-  int available_block_index = select_cache_block(block_id);
-  disk_cache[available_block_index].time_stamp = get_ticks();
-  if (disk_cache[available_block_index].block_id == block_id) {
-    memcpy((void*)buf, (void*)disk_cache_data[available_block_index],
-           SECTOR_SIZE);
-    disk_cache[available_block_index].time_stamp = get_ticks();
-    spin_lock_release(&disk_cache_lock);
-    return;
-  }
-  ker_sd_read(disk_cache_data[available_block_index], SECTORS_PER_BLOCK,
-              BI2SI(block_id));
-  disk_cache[available_block_index].block_id = block_id;
-  disk_cache[available_block_index].status &= ~DISK_CACHE_DIRTY;
-  disk_cache[available_block_index].status |= DISK_CACHE_VALID;
-  disk_cache[available_block_index].time_stamp = get_ticks();
-  spin_lock_release(&disk_cache_lock);
-}
-
-static inline void write_disk_block(const char* buf, int block_id) {
-  spin_lock_acquire(&disk_cache_lock);
-  int available_block_index = select_cache_block(block_id);
-  disk_cache[available_block_index].time_stamp = get_ticks();
-  if (disk_cache[available_block_index].block_id == block_id) {
-    memcpy((void*)disk_cache_data[available_block_index], (void*)buf,
-           BLOCK_SIZE);
-    disk_cache[available_block_index].status |= DISK_CACHE_DIRTY;
-    disk_cache[available_block_index].time_stamp = get_ticks();
-    spin_lock_release(&disk_cache_lock);
-    return;
-  }
-  ker_sd_write(disk_cache_data[available_block_index], SECTORS_PER_BLOCK,
-               BI2SI(block_id));
-  disk_cache[available_block_index].block_id = block_id;
-  disk_cache[available_block_index].status &= ~DISK_CACHE_DIRTY;
-  disk_cache[available_block_index].status |= DISK_CACHE_VALID;
-  disk_cache[available_block_index].time_stamp = get_ticks();
-  spin_lock_release(&disk_cache_lock);
-}
+void do_mkfs(int super_block_sector);
 
 int alloc_block();
 static inline void free_block(int block_id) {
@@ -135,7 +91,7 @@ static inline void free_block(int block_id) {
 }
 
 inode* alloc_inode();
-inode* get_inode(int id);
+inode* read_inode(int id);
 static inline void free_inode() {
 
 }

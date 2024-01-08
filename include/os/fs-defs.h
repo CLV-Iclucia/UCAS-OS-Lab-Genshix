@@ -1,17 +1,22 @@
 #ifndef OS_FS_META_H
 #define OS_FS_META_H
+#include <common.h>
+#include <pgtable.h>
 
 #define SECTOR_SIZE 512
 #define BLOCK_SIZE 4096
 #define SUPER_BLOCK_SECTOR 1048576
 #define FS_SIZE_GB 1
-#define NINODE 64
+
 #define FILE_NAME_MAXLEN 16
+#define NINODE 32
 #define NDIRECT 12
 #define NINDIR_1 3
 #define NINDIR_2 2
 #define NINDIR_3 1
 #define FS_MAGIC 114514
+#define MAX_INODE_ON_DISK 1024
+
 #define FS_SIZE_BYTES (FS_SIZE_GB << 30)
 #define BLOCK_MAP_BYTES (NUM_DATA_BLOCKS >> 3)
 #define SECTORS_PER_BLOCK (BLOCK_SIZE / SECTOR_SIZE)
@@ -31,4 +36,12 @@
 #define FS_R (1 << 0)
 #define FS_W (1 << 1)
 #define FS_X (1 << 2)
+
+static inline void ker_sd_read(char* buf, int sec_num, int start_sec) {
+  sd_read(ADDR(kva2pa(KVA(buf))), sec_num, start_sec);
+}
+
+static inline void ker_sd_write(const char* buf, int sec_num, int start_sec) {
+  sd_write(ADDR(kva2pa(KVA(buf))), sec_num, start_sec);
+}
 #endif

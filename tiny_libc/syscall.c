@@ -213,16 +213,17 @@ void sys_taskset(int pid, uint32_t core_id) {
   invoke_syscall(SYSCALL_TASKSET, pid, core_id, IGNORE, IGNORE, IGNORE);
 }
 
-void* sys_shmpageget(int key)
+int sys_net_send(void *txpacket, int length)
 {
-    /* TODO: [p4-task4] call invoke_syscall to implement sys_shmpageget */
-    invoke_syscall(SYSCALL_SHM_GET, key, IGNORE, IGNORE, IGNORE, IGNORE);
+    /* TODO: [p5-task1] call invoke_syscall to implement sys_net_send */
+    return 0;
 }
 
-void sys_shmpagedt(void *addr)
+int sys_net_recv(void *rxbuffer, int pkt_num, int *pkt_lens)
 {
-    /* TODO: [p4-task4] call invoke_syscall to implement sys_shmpagedt */
-    invoke_syscall(SYSCALL_SHM_DT, (long)addr, IGNORE, IGNORE, IGNORE, IGNORE);
+    /* TODO: [p5-task2] call invoke_syscall to implement sys_net_recv */
+    return 0;
 }
+
 
 /************************************************************/
